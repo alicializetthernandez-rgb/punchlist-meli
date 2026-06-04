@@ -20,7 +20,7 @@
     {src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%230A0080'/%3E%3Ctext y='360' x='256' text-anchor='middle' font-size='300' font-family='sans-serif' font-weight='bold' fill='%23FFE600'%3EP%3C/text%3E%3C/svg%3E",sizes:"512x512",type:"image/svg+xml",purpose:"any maskable"}
   ],
   shortcuts:[
-    {name:"Nuevo punch",short_name:"Nuevo",url:"./?r=create"},
+    {name:"Nuevo punch",short_name:"Nuevo",url:location.pathname+"?r=create"},
     {name:"Mis punches",short_name:"Míos",url:"./?r=inbox"}
   ]};
   const b=new Blob([JSON.stringify(m)],{type:"application/manifest+json"});
@@ -1146,7 +1146,7 @@ function render() {
 // ── EVENT BINDING ────────────────────────────────────────────────────
 function bind(root) {
   root.querySelectorAll('[data-action]').forEach(elt => {
-    elt.addEventListener('click', (e) => {
+    elt.addEventListener('click', async (e) => {
       e.stopPropagation();
       const action = elt.dataset.action;
       const id = elt.dataset.id;
