@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="es-419">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0A0080">
+
+<!-- PWA instalable Android + iPhone -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Punch List">
+<meta name="application-name" content="Punch List">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230A0080'/%3E%3Ctext y='68' x='50' text-anchor='middle' font-size='58' font-family='sans-serif' font-weight='bold' fill='%23FFE600'%3EP%3C/text%3E%3C/svg%3E">
+<script>
+(function(){
+  const m={name:"Punch List · MercadoLibre",short_name:"Punch List",start_url:"./",display:"standalone",orientation:"portrait",background_color:"#FFE600",theme_color:"#0A0080",lang:"es-419",
+  icons:[
+    {src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='38' fill='%230A0080'/%3E%3Ctext y='135' x='96' text-anchor='middle' font-size='110' font-family='sans-serif' font-weight='bold' fill='%23FFE600'%3EP%3C/text%3E%3C/svg%3E",sizes:"192x192",type:"image/svg+xml",purpose:"any maskable"},
+    {src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%230A0080'/%3E%3Ctext y='360' x='256' text-anchor='middle' font-size='300' font-family='sans-serif' font-weight='bold' fill='%23FFE600'%3EP%3C/text%3E%3C/svg%3E",sizes:"512x512",type:"image/svg+xml",purpose:"any maskable"}
+  ],
+  shortcuts:[
+    {name:"Nuevo punch",short_name:"Nuevo",url:location.pathname+"?r=create"},
+    {name:"Mis punches",short_name:"Míos",url:"./?r=inbox"}
+  ]};
+  const b=new Blob([JSON.stringify(m)],{type:"application/manifest+json"});
+  const l=document.createElement("link");l.rel="manifest";l.href=URL.createObjectURL(b);
+  document.head.appendChild(l);
+})();
+</script>
+<title>Punch List · Commissioning Mercado Libre</title>
+<style>
+  :root {
+    --blue: #0A0080;
+    --yellow: #FFE600;
+    --black: #000000;
+    --white: #FFFFFF;
+    --g05: #F7F7F7;
+    --g10: #EEEEEE;
+    --g25: #CCCCCC;
+    --g50: #999999;
+    --g75: #666666;
+    --pos: #00A650;
+    --warn: #F39C12;
+    --neg: #C0392B;
+    --high: #FF6A00;
+    --font: 'Proxima Nova', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { margin: 0; padding: 0; height: 100%; height: -webkit-fill-available; }
+  body { margin: 0; padding: 0; height: 100%; height: -webkit-fill-available; min-height: 100dvh; }
+  body {
+    font-family: var(--font);
+    background: var(--g05);
+    color: var(--black);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: contain;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  input, textarea, select { font-family: inherit; font-size: 16px; }
+  a { color: inherit; }
+
+  /* ── App shell ─────────────────────────────────────────────────────── */
+  #app { min-height: 100dvh; min-height: -webkit-fill-available; display: flex; flex-direction: column; width: 100%; max-width: 460px; margin: 0 auto; background: var(--g05); position: relative; }
+  .appbar { background: var(--white); border-bottom: 1px solid var(--g10); display: flex; align-items: center; min-height: 56px; padding: env(safe-area-inset-top) 4px 0; position: sticky; top: 0; z-index: 10; }
+  .appbar .ttl { flex: 1; min-width: 0; padding: 0 4px; }
+  .appbar h1 { margin: 0; font-size: 17px; font-weight: 700; color: var(--blue); line-height: 1.15; letter-spacing: -0.005em; }
+  .appbar .sub { font-size: 11px; color: var(--g75); line-height: 1.2; }
+  .iconbtn { width: 44px; height: 44px; border: none; background: transparent; display: inline-flex; align-items: center; justify-content: center; color: var(--black); }
+  .iconbtn:active { background: var(--g05); }
+  .sync { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; color: var(--pos); font-size: 10px; font-weight: 700; }
+  .sync .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--pos); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  .scope-strip { background: var(--yellow); color: var(--blue); padding: 6px 10px 6px 12px; display: flex; align-items: center; gap: 8px; font-size: 12px; border-bottom: 1px solid rgba(10,0,128,0.16); }
+  .scope-strip .lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.7; }
+  .scope-pill { background: rgba(10,0,128,0.08); border: none; color: var(--blue); padding: 4px 8px; border-radius: 4px; font-family: var(--mono); font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .scope-strip .sep { opacity: 0.5; }
+
+  /* ── Pages ─────────────────────────────────────────────────────────── */
+  .page { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(64px + env(safe-area-inset-bottom) + 16px); }
+  .page.no-nav { padding-bottom: 0; }
+
+  /* ── Bottom nav ────────────────────────────────────────────────────── */
+  .botnav { background: var(--white); border-top: 1px solid var(--g10); padding-bottom: env(safe-area-inset-bottom); position: sticky; bottom: 0; z-index: 10; }
+  .botnav ul { display: grid; grid-template-columns: repeat(5, 1fr); height: 60px; margin: 0; padding: 0; list-style: none; }
+  .botnav button { width: 100%; height: 100%; border: none; background: transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--g75); padding: 0; }
+  .botnav button.active { color: var(--blue); }
+  .botnav button.primary span.fab { width: 36px; height: 36px; border-radius: 999px; background: var(--yellow); color: var(--blue); border: 1px solid var(--blue); display: flex; align-items: center; justify-content: center; }
+  .botnav .lab { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; }
+
+  /* ── Common ─────────────────────────────────────────────────────────── */
+  .section { padding: 14px 16px 4px; }
+  .section .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--g75); margin-bottom: 8px; }
+  .card { background: var(--white); border: 1px solid var(--g10); border-radius: 4px; padding: 16px; }
+  .card + .card { margin-top: 10px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; padding: 0 16px 12px; }
+  .kpi { background: var(--white); border: 1px solid var(--g10); border-radius: 4px; padding: 10px 12px; }
+  .kpi.tone-neg { border-left: 3px solid var(--neg); }
+  .kpi.tone-warn { border-left: 3px solid var(--warn); }
+  .kpi.tone-pos { border-left: 3px solid var(--pos); }
+  .kpi .label { font-size: 10px; font-weight: 700; color: var(--g75); text-transform: uppercase; letter-spacing: 0.1em; }
+  .kpi .val { font-size: 24px; font-weight: 800; color: var(--blue); line-height: 1.05; font-variant-numeric: tabular-nums; }
+  .kpi.tone-neg .val { color: var(--neg); }
+  .kpi.tone-warn .val { color: var(--warn); }
+  .kpi.tone-pos .val { color: var(--pos); }
+  .kpi .sub { font-size: 11px; color: var(--g75); margin-top: 2px; }
+
+  .status-pill { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 3px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .status-open { background: var(--g10); color: var(--black); }
+  .status-assigned { background: var(--blue); color: var(--white); }
+  .status-in_progress { background: var(--yellow); color: var(--blue); }
+  .status-ready_for_review { background: var(--warn); color: var(--white); }
+  .status-closed { background: var(--pos); color: var(--white); }
+  .status-rejected { background: var(--neg); color: var(--white); }
+
+  .qual-pill { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 3px; background: var(--blue); color: var(--white); font-size: 9px; font-weight: 700; font-family: var(--mono); letter-spacing: 0.06em; }
+  .priority-bar { width: 3px; height: 36px; border-radius: 1px; flex-shrink: 0; }
+  .priority-low { background: var(--g25); }
+  .priority-medium { background: var(--warn); }
+  .priority-high { background: var(--neg); }
+  .code-mono { font-family: var(--mono); font-weight: 700; font-size: 12px; color: var(--blue); }
+
+  .health-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .health-dot::before { content: ''; width: 10px; height: 10px; border-radius: 999px; }
+  .h-green { color: var(--pos); }
+  .h-green::before { background: var(--pos); box-shadow: 0 0 0 3px rgba(0,166,80,0.18); }
+  .h-yellow { color: var(--warn); }
+  .h-yellow::before { background: var(--warn); box-shadow: 0 0 0 3px rgba(243,156,18,0.18); }
+  .h-red { color: var(--neg); }
+  .h-red::before { background: var(--neg); box-shadow: 0 0 0 3px rgba(192,57,43,0.18); }
+
+  /* ── Login ─────────────────────────────────────────────────────────── */
+  .login { background: var(--yellow); flex: 1; display: flex; flex-direction: column; }
+  .login .hero { flex: 1; padding: 40px 24px 24px; display: flex; flex-direction: column; justify-content: space-between; }
+  .login .brand { display: flex; align-items: center; gap: 10px; }
+  .login .logo { width: 36px; height: 36px; background: var(--blue); color: var(--yellow); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px; }
+  .login .corp { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; color: var(--blue); text-transform: uppercase; }
+  .login h2 { font-size: 28px; font-weight: 700; color: var(--blue); line-height: 1.1; letter-spacing: -0.015em; margin: 0; }
+  .login .card-bottom { background: var(--white); border-top-left-radius: 16px; border-top-right-radius: 16px; padding: 24px 22px 28px; }
+  .btn-primary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; background: var(--blue); color: var(--white); border: none; border-radius: 4px; font-size: 16px; font-weight: 700; }
+  .btn-primary:disabled { opacity: 0.5; }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-secondary { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 48px; background: var(--white); color: var(--blue); border: 1px solid var(--blue); border-radius: 4px; font-size: 14px; font-weight: 700; }
+
+  /* ── Site Map ──────────────────────────────────────────────────────── */
+  .map-canvas { position: relative; background: #FCFCFE; border: 1px solid var(--g10); margin: 12px 16px; aspect-ratio: 3/4; overflow: hidden; border-radius: 4px; }
+  .map-canvas svg { display: block; width: 100%; height: 100%; }
+  .site-dot { position: absolute; border-radius: 999px; transform: translate(-50%, -50%); border: 2px solid var(--white); cursor: pointer; }
+  .legend { display: flex; gap: 12px; font-size: 11px; color: var(--g75); padding: 0 16px 12px; flex-wrap: wrap; }
+  .legend .item { display: inline-flex; align-items: center; gap: 4px; }
+  .legend .item::before { content: ''; width: 8px; height: 8px; border-radius: 999px; }
+  .legend .active::before { background: var(--pos); }
+  .legend .commissioning::before { background: var(--warn); }
+  .legend .planning::before { background: var(--g50); }
+  .legend .closed::before { background: var(--blue); }
+
+  .site-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--white); border-bottom: 1px solid var(--g10); cursor: pointer; }
+  .site-row .flag { width: 28px; height: 28px; border-radius: 999px; background: var(--g10); color: var(--blue); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; }
+  .site-row .body { flex: 1; min-width: 0; }
+  .site-row .title { font-size: 14px; font-weight: 600; color: var(--black); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .site-row .desc { font-size: 11px; color: var(--g75); }
+
+  /* ── Form ──────────────────────────────────────────────────────────── */
+  .form-section { background: var(--white); border: 1px solid var(--g10); border-radius: 4px; margin: 10px 12px; padding: 14px 14px 4px; }
+  .form-section h3 { margin: 0 0 12px; font-size: 11px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.12em; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 10px; font-weight: 700; color: var(--g75); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .field input, .field textarea, .field select { width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--g25); border-radius: 4px; background: var(--white); }
+  .field textarea { resize: vertical; min-height: 64px; padding: 10px 12px; }
+  .field input:focus, .field textarea:focus, .field select:focus { outline: 2px solid var(--blue); outline-offset: -1px; border-color: var(--blue); }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; min-height: 40px; background: var(--white); color: var(--black); border: 1px solid var(--g25); border-radius: 4px; font-size: 13px; font-weight: 600; }
+  .chip.active { background: var(--blue); color: var(--white); border-color: var(--blue); }
+  .segmented { display: grid; gap: 0; background: var(--g05); border: 1px solid var(--g10); border-radius: 4px; padding: 2px; }
+  .segmented button { min-height: 42px; padding: 0 6px; border: none; background: transparent; border-radius: 2px; color: var(--g75); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .segmented button.active { background: var(--white); color: var(--blue); box-shadow: 0 0 0 1px rgba(0,0,0,0.06); }
+  .pri-bar { width: 3px; height: 12px; border-radius: 1px; }
+
+  .photo-rail { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .photo-tile { width: 84px; height: 84px; border-radius: 4px; flex-shrink: 0; background: var(--g10); position: relative; overflow: hidden; }
+  .photo-add { width: 84px; height: 84px; border-radius: 4px; flex-shrink: 0; background: var(--yellow); border: 2px dashed var(--blue); color: var(--blue); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 10px; font-weight: 700; }
+
+  .sticky-actions { position: sticky; bottom: 0; background: var(--white); border-top: 1px solid var(--g10); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); display: flex; gap: 8px; z-index: 5; }
+  .sticky-actions button { flex: 1; min-height: 48px; border-radius: 4px; font-size: 14px; font-weight: 700; }
+  .btn-ghost { background: var(--white); color: var(--black); border: 1px solid var(--g25); }
+  .btn-blue { background: var(--blue); color: var(--white); border: none; }
+  .btn-blue:disabled { opacity: 0.4; }
+
+  /* ── Punch list rows ───────────────────────────────────────────────── */
+  .punch-row { display: flex; align-items: stretch; padding: 0; border-bottom: 1px solid var(--g10); background: var(--white); cursor: pointer; min-height: 78px; }
+  .punch-row.overdue-stripe { box-shadow: inset 4px 0 0 var(--neg); }
+  .punch-row .body { flex: 1; padding: 10px 12px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .punch-row .meta-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .punch-row .title { font-size: 14px; font-weight: 600; color: var(--black); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.35; }
+  .punch-row .footer { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--g75); flex-wrap: wrap; }
+
+  /* ── Detail ───────────────────────────────────────────────────────── */
+  .status-rail { background: var(--white); border: 1px solid var(--g10); border-radius: 4px; padding: 14px; margin: 12px 16px; }
+  .rail-steps { display: flex; align-items: flex-start; gap: 4px; }
+  .rail-step { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 56px; position: relative; }
+  .rail-step .node { display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 700; font-size: 9px; letter-spacing: 0.04em; transition: all 200ms; }
+  .rail-step .lab { font-size: 10px; font-weight: 700; line-height: 1.1; text-align: center; }
+  .rail-step .dur { font-size: 9px; color: var(--g75); font-variant-numeric: tabular-nums; }
+  .rail-step.past .node { width: 22px; height: 22px; border-radius: 999px; background: var(--blue); color: var(--white); }
+  .rail-step.past .lab { color: var(--black); }
+  .rail-step.active .node { width: 32px; height: 32px; border-radius: 999px; background: var(--yellow); color: var(--blue); border: 2px solid var(--blue); box-shadow: 0 0 0 4px rgba(10,0,128,0.08); }
+  .rail-step.active .lab { color: var(--blue); }
+  .rail-step.future .node { width: 22px; height: 22px; border-radius: 999px; background: var(--white); color: var(--g50); border: 1.5px solid var(--g25); }
+  .rail-step.future .lab { color: var(--g50); }
+  .rail-connector { flex: 1; height: 2px; margin-top: 10px; background: var(--g10); min-width: 6px; }
+  .rail-connector.done { background: var(--blue); }
+
+  /* ── Modal ─────────────────────────────────────────────────────────── */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 80; display: none; align-items: flex-end; }
+  .modal-backdrop.show { display: flex; }
+  .modal { background: var(--white); width: 100%; max-width: 460px; margin: 0 auto; border-top-left-radius: 12px; border-top-right-radius: 12px; max-height: 90vh; display: flex; flex-direction: column; animation: slide-up 240ms cubic-bezier(0.2,0,0.2,1); }
+  @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .modal .handle { width: 36px; height: 4px; background: var(--g25); border-radius: 2px; margin: 8px auto 4px; }
+  .modal header { display: flex; align-items: center; justify-content: space-between; padding: 4px 16px 12px; border-bottom: 1px solid var(--g10); }
+  .modal h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--blue); }
+  .modal .body { padding: 12px 16px; overflow-y: auto; flex: 1; }
+  .modal .footer { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--g10); display: flex; gap: 8px; }
+
+  /* ── Activity ──────────────────────────────────────────────────────── */
+  .activity { padding: 4px 0; display: flex; gap: 10px; align-items: center; }
+  .activity .avatar { width: 28px; height: 28px; border-radius: 999px; background: var(--blue); color: var(--white); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px; flex-shrink: 0; }
+  .activity .avatar.vendor { background: var(--warn); }
+  .activity .text { font-size: 12px; color: var(--g75); flex: 1; min-width: 0; }
+  .activity .text b { color: var(--black); }
+  .activity .time { font-size: 10px; color: var(--g50); font-variant-numeric: tabular-nums; }
+
+  /* ── Toast ─────────────────────────────────────────────────────────── */
+  .toast-host { position: fixed; left: 50%; bottom: 88px; transform: translateX(-50%); z-index: 100; pointer-events: none; display: flex; flex-direction: column; gap: 8px; }
+  .toast { background: #111827; color: var(--white); padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: 0 10px 25px rgba(0,0,0,0.2); animation: toast-in 200ms ease-out; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Hide elements helper */
+  .hidden { display: none !important; }
+
+  /* SVG icons inline */
+  .ic { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; }
+  .ic-sm { width: 16px; height: 16px; }
+
+  /* Drag target indicator */
+  .install-progress { background: var(--g10); height: 4px; border-radius: 2px; overflow: hidden; margin-top: 6px; }
+  .install-progress > span { display: block; height: 100%; background: var(--blue); transition: width 240ms ease; }
+
+  /* Responsive: desktop tweaks */
+  @media (min-width: 720px) {
+    #app { max-width: 460px; box-shadow: 0 0 0 1px var(--g10); margin-top: 24px; margin-bottom: 24px; min-height: calc(100dvh - 48px); border-radius: 16px; overflow: hidden; }
+    body { padding: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+<div class="toast-host" id="toasts" aria-live="polite"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+// PUNCH LIST PWA — SINGLE FILE COMPLETE
+// Mercado Libre · Commissioning · Phase 1-15 consolidated
+// Backend: Google Sheets (lectura) + Verdi Flow webhook (escritura)
+// ════════════════════════════════════════════════════════════════════
+
+// ── ⚙️  CONFIGURACIÓN ────────────────────────────────────────────────
+const CONFIG = {
+  // URLs CSV publicadas desde Google Sheets (sin API Key)
+  CSV_PUNCHES:    'https://docs.google.com/spreadsheets/d/e/2PACX-1vQeRD6aZ8fLyq_t4nmjZLt1LFgGEB1MlRmvCnb9z4kUM7H40dlEOUNtTygosfqlZnb_vVq4fl9x4MHG/pub?gid=0&single=true&output=csv',
+  CSV_SITIOS:     'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=0&single=true&output=csv',
+  CSV_PROYECTOS:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=2137157448&single=true&output=csv',
+  CSV_FASES:      'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=1364251362&single=true&output=csv',
+  CSV_CATEGORIAS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=479947321&single=true&output=csv',
+  // Verdi Flow webhook (escritura)
+  VERDI_FLOW_URL:  'https://verdi-flows.melisystems.com/webhook/punchlist-punch',
+  FOTOS_FOLDER_ID: '1ULOAoHxfaroWHiBHpMZpmgvZ0l_3mdHb',
+};
+
+// ── CSV READER (lectura sin API Key) ──────────────────────────────────
+const SheetsAPI = {
+  async read(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('CSV fetch error ' + res.status);
+    const text = await res.text();
+    return this.parseCSV(text);
+  },
+  parseCSV(text) {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+    return lines.slice(1).map(line => {
+      const fields = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { fields.push(cur); cur = ''; }
+        else { cur += ch; }
+      }
+      fields.push(cur);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (fields[i] || '').replace(/^"|"$/g, '').trim(); });
+      return obj;
+    });
+  },
+  async write(action, payload) {
+    const res = await fetch(CONFIG.VERDI_FLOW_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    return res.ok ? { ok: true } : { ok: false };
+  }
+};
+
+// ── GUARDAR PUNCH (llama a Verdi Flow) ───────────────────────────────
+async function savePunch(punch, isNew = true) {
+  try {
+    const result = await SheetsAPI.write(isNew ? 'CREATE_PUNCH' : 'UPDATE_PUNCH', { punch });
+    if (!result.demo) toast(isNew ? '✓ Punch guardado en Drive' : '✓ Estado actualizado en Drive');
+  } catch (err) {
+    toast('Sin conexión · cambio guardado en cola local');
+    const queue = JSON.parse(localStorage.getItem('pl_queue') || '[]');
+    queue.push({ action: isNew ? 'CREATE_PUNCH' : 'UPDATE_PUNCH', punch, ts: Date.now() });
+    localStorage.setItem('pl_queue', JSON.stringify(queue));
+  }
+}
+
+// ── OFFLINE SYNC (cuando vuelve la red) ──────────────────────────────
+window.addEventListener('online', async () => {
+  const queue = JSON.parse(localStorage.getItem('pl_queue') || '[]');
+  if (!queue.length) return;
+  toast(`Reconectado · sincronizando ${queue.length} cambios…`);
+  const pending = [...queue];
+  localStorage.removeItem('pl_queue');
+  for (const item of pending) {
+    try { await SheetsAPI.write(item.action, { punch: item.punch }); }
+    catch(e) { break; }
+  }
+  toast('Sincronización completa con Verdi Flow');
+});
+
+// ── DATA FIXTURE ─────────────────────────────────────────────────────
+const DATA = {
+  user: { id: 'u_001', name: 'Lucía Hernández', initials: 'LH', email: 'lucia.h@mercadolibre.com', role: 'operator' },
+
+  sites: [
+    { id: 's_mx_scl', code: 'MX-SCL-01', name: 'Saltillo Hub',    city: 'Saltillo',         country: 'México',    flag: 'MX', status: 'commissioning', pos: { x: 25, y: 22 }, open: 24, critical: 3, overdue: 5 },
+    { id: 's_mx_aif', code: 'MX-AIF-02', name: 'Apodaca FC',      city: 'Apodaca',          country: 'México',    flag: 'MX', status: 'active',        pos: { x: 27, y: 26 }, open: 14, critical: 0, overdue: 1 },
+    { id: 's_br_cps', code: 'BR-CPS-04', name: 'Cajamar 04',      city: 'Cajamar',          country: 'Brasil',    flag: 'BR', status: 'commissioning', pos: { x: 62, y: 68 }, open: 31, critical: 2, overdue: 6 },
+    { id: 's_br_rjo', code: 'BR-RJO-05', name: 'Duque de Caxias', city: 'Duque de Caxias',  country: 'Brasil',    flag: 'BR', status: 'active',        pos: { x: 64, y: 70 }, open: 18, critical: 1, overdue: 2 },
+    { id: 's_ar_bue', code: 'AR-BUE-06', name: 'Pilar FC',        city: 'Pilar',            country: 'Argentina', flag: 'AR', status: 'active',        pos: { x: 54, y: 82 }, open: 8,  critical: 0, overdue: 0 },
+    { id: 's_cl_stg', code: 'CL-STG-07', name: 'Lampa Hub',       city: 'Lampa',            country: 'Chile',     flag: 'CL', status: 'commissioning', pos: { x: 45, y: 80 }, open: 22, critical: 1, overdue: 3 },
+    { id: 's_co_fzn', code: 'CO-FZN-01', name: 'Funza FC',        city: 'Funza',            country: 'Colombia',  flag: 'CO', status: 'active',        pos: { x: 40, y: 40 }, open: 11, critical: 0, overdue: 0 }
+  ],
+
+  projects: [
+    { id: 'pr_scl_24', siteId: 's_mx_scl', code: 'SCL-24', name: 'Automation Wave 3', system: 'Daifuku', status: 'commissioning', progress: 62 },
+    { id: 'pr_scl_25', siteId: 's_mx_scl', code: 'SCL-25', name: 'Mezzanine retrofit', system: 'Vanderlande', status: 'planning', progress: 8 }
+  ],
+
+  phases: [
+    { id: 'ph_scl24_1', projectId: 'pr_scl_24', code: 'F1', name: 'Mechanical install', order: 1, status: 'closed',   progress: 100 },
+    { id: 'ph_scl24_2', projectId: 'pr_scl_24', code: 'F2', name: 'Eléctrico & controles', order: 2, status: 'active', progress: 72 },
+    { id: 'ph_scl24_3', projectId: 'pr_scl_24', code: 'IQ', name: 'Instalación', order: 3, status: 'active',   progress: 78 },
+    { id: 'ph_scl24_4', projectId: 'pr_scl_24', code: 'OQ', name: 'Operacional', order: 4, status: 'planning', progress: 42 },
+    { id: 'ph_scl24_5', projectId: 'pr_scl_24', code: 'PQ', name: 'Performance', order: 5, status: 'planning', progress: 12 }
+  ],
+
+  categories: [
+    { id: 'cat_doc',  name: 'Documentación' },
+    { id: 'cat_elec', name: 'Eléctrico' },
+    { id: 'cat_pneu', name: 'Neumático' },
+    { id: 'cat_ctrl', name: 'Control' },
+    { id: 'cat_soft', name: 'Software' },
+    { id: 'cat_5s',   name: '5S' }
+  ],
+
+  punches: [
+    { id: 'p1', code: 'P-1044', title: 'Sensor fotoeléctrico C-12 fuera de alineación',
+      description: 'Sensor C-12 desalineado aprox. 5°, provoca lecturas erráticas en el merge de zona B durante prueba de carga. Identificado en SAT 4.2.',
+      suggestedSolution: 'Realinear sensor C-12 a 0° con plantilla, recalibrar offset en HMI y verificar con prueba de paso 200 cajas continuas.',
+      siteId: 's_mx_scl', projectId: 'pr_scl_24', phaseId: 'ph_scl24_2',
+      status: 'in_progress', priority: 'high', categoryId: 'cat_ctrl', qualPhase: 'OQ',
+      assigneeId: 'v_001', assigneeName: 'Tomás Ortega', assigneeOrg: 'Daifuku',
+      mlRespName: 'Diego Ramírez', vendorName: 'Tomás Ortega · Daifuku', inspectorName: 'Carla Núñez',
+      dueDate: '2026-05-22', createdAt: '2026-05-13T07:42:00', updatedAt: '2026-05-20T11:30:00',
+      photoCount: 3, commentCount: 4,
+      protoCode: 'OQ-T2.04.1', protoName: 'Sensores fotoeléctricos' },
+    { id: 'p2', code: 'P-1047', title: 'PLC zona B no responde a HMI',
+      description: 'Timeout intermitente comunicación HMI ↔ PLC-B. Logs adjuntos sugieren saturación de bus.',
+      siteId: 's_mx_scl', projectId: 'pr_scl_24', phaseId: 'ph_scl24_2',
+      status: 'open', priority: 'high', categoryId: 'cat_soft', qualPhase: 'OQ',
+      assigneeId: null, dueDate: '2026-05-19', createdAt: '2026-05-19T06:30:00', updatedAt: '2026-05-20T06:30:00',
+      photoCount: 2, commentCount: 1, protoCode: 'OQ-T2.03.1' },
+    { id: 'p3', code: 'P-1043', title: 'Tablero TGD-04 sin etiquetado',
+      description: 'Falta etiquetar circuitos de salida. Requerido para SAT.',
+      suggestedSolution: 'Imprimir etiquetas según plano EL-204.',
+      siteId: 's_mx_scl', projectId: 'pr_scl_24', phaseId: 'ph_scl24_2',
+      status: 'open', priority: 'medium', categoryId: 'cat_elec', qualPhase: 'IQ',
+      assigneeId: 'u_001', assigneeName: 'Lucía Hernández',
+      mlRespName: 'Lucía Hernández', dueDate: '2026-05-18', createdAt: '2026-05-12T09:11:00', updatedAt: '2026-05-19T15:33:00',
+      photoCount: 1, commentCount: 2, protoCode: 'IQ-T1.03.3' },
+    { id: 'p4', code: 'P-1046', title: 'Cortina luz CL-3 sin prueba de paro',
+      description: 'Pendiente test de stop function según check SAT 4.2.',
+      siteId: 's_mx_scl', projectId: 'pr_scl_24', phaseId: 'ph_scl24_2',
+      status: 'assigned', priority: 'high', categoryId: 'cat_elec', qualPhase: 'OQ',
+      assigneeId: 'u_001', assigneeName: 'Lucía Hernández',
+      mlRespName: 'Lucía Hernández', dueDate: '2026-05-18', createdAt: '2026-05-14T10:05:00', updatedAt: '2026-05-19T10:05:00',
+      photoCount: 2, commentCount: 0, protoCode: 'IQ-T5.03' },
+    { id: 'p5', code: 'P-1045', title: 'Soporte rodillo R-208 con holgura',
+      description: 'Tornillería floja. Apretar a torque y verificar.',
+      siteId: 's_mx_scl', projectId: 'pr_scl_24', phaseId: 'ph_scl24_2',
+      status: 'ready_for_review', priority: 'medium', categoryId: 'cat_ctrl', qualPhase: 'IQ',
+      assigneeId: 'u_002', assigneeName: 'Diego Ramírez',
+      mlRespName: 'Diego Ramírez', dueDate: '2026-05-25', createdAt: '2026-05-10T11:00:00', updatedAt: '2026-05-20T17:21:00',
+      photoCount: 0, commentCount: 1, protoCode: 'OQ-T2.02.2' },
+    { id: 'p6', code: 'P-1041', title: 'Falta as-built de zona A',
+      description: 'Planos actualizados pendientes de subir al repositorio.',
+      siteId: 's_mx_scl', projectId: 'pr_scl_24', phaseId: 'ph_scl24_1',
+      status: 'closed', priority: 'low', categoryId: 'cat_doc', qualPhase: 'IQ',
+      mlRespName: 'Paula Martínez', dueDate: '2026-05-10', actualClose: '2026-05-11',
+      createdAt: '2026-05-05T09:00:00', updatedAt: '2026-05-11T16:00:00',
+      photoCount: 0, commentCount: 0 }
+  ],
+
+  comments: {
+    p1: [
+      { actor: 'Diego Ramírez',  role: 'lead',   at: '13 may 10:24', body: 'Tomás, urgente — bloquea SAT 4.2. Confirmá tiempo de respuesta.' },
+      { actor: 'Tomás Ortega',   role: 'vendor', at: '13 may 14:02', body: 'Voy mañana 09:00. Pido plantilla de alineación a fábrica.' },
+      { actor: 'Tomás Ortega',   role: 'vendor', at: '14 may 11:30', body: 'Diferencia 5.3° confirmada. Ajustando, recalibro a las 12.' },
+      { actor: 'Tomás Ortega',   role: 'vendor', at: '15 may 11:20', body: 'Sensor realineado y recalibrado. Subo foto de evidencia.' }
+    ]
+  }
+};
+
+const STATUS_LABEL = { open: 'Abierto', assigned: 'Asignado', in_progress: 'En progreso', ready_for_review: 'En revisión', closed: 'Cerrado', rejected: 'Rechazado' };
+const STATUS_ORDER = ['open', 'assigned', 'in_progress', 'ready_for_review', 'closed'];
+const STATUS_ABBR = { open: 'OP', assigned: 'AS', in_progress: 'EP', ready_for_review: 'RV', closed: 'OK' };
+const PRIORITY_LABEL = { low: 'Baja', medium: 'Media', high: 'Alta' };
+
+const HEALTH_BY_STATUS = { active: 'green', commissioning: 'yellow', planning: 'red', closed: 'green' };
+
+
+// ── MAPPERS CSV → objeto interno ─────────────────────────────────────
+function mapSitio(r) {
+  return { id: r.id||'', code: r.code||'', name: r.nombre||r.name||'', city: r.ciudad||r.city||'', country: r.pais||r.country||'', flag: r.flag||r.pais_code||'MX', status: r.status||'active', pos: { x: parseFloat(r.pos_x||25), y: parseFloat(r.pos_y||22) }, open: 0, critical: 0, overdue: 0 };
+}
+function mapProyecto(r) {
+  return { id: r.id||'', siteId: r.siteId||'', code: r.code||'', name: r.nombre||r.name||'', system: r.sistema||r.system||'', status: r.status||'active', progress: parseInt(r.progreso||r.progress||0) };
+}
+function mapFase(r) {
+  return { id: r.id||'', projectId: r.projectId||'', code: r.code||'', name: r.nombre||r.name||'', order: parseInt(r.orden||r.order||1), status: r.status||'active', progress: parseInt(r.progreso||r.progress||0) };
+}
+function mapCategoria(r) {
+  return { id: r.id||'', name: r.nombre||r.name||'' };
+}
+function mapPunch(r) {
+  return { id: r.id||'', code: r.code||'', title: r.titulo||r.title||'', description: r.descripcion||r.description||'', suggestedSolution: r.solucion||r.suggestedSolution||'', siteId: r.siteId||'', projectId: r.projectId||'', phaseId: r.phaseId||'', status: r.status||'open', priority: r.prioridad||r.priority||'medium', categoryId: r.categoryId||'', qualPhase: r.qualPhase||r.faseCal||'IQ', assigneeId: r.assigneeId||null, assigneeName: r.assigneeName||'', assigneeOrg: r.assigneeOrg||'', mlRespName: r.respMeli||r.mlRespName||'', vendorName: r.respVendor||r.vendorName||'', inspectorName: r.inspectorName||'', dueDate: r.fechaVence||r.dueDate||null, createdAt: r.fechaCreacion||r.createdAt||new Date().toISOString(), updatedAt: r.fechaActualizacion||r.updatedAt||new Date().toISOString(), photoCount: parseInt(r.photoCount||0), commentCount: parseInt(r.commentCount||0), protoCode: r.protoCode||'', protoName: r.protoName||'' };
+}
+
+// ── ROUTER STATE ─────────────────────────────────────────────────────
+const state = {
+  authed: false,
+  route: 'login',
+  params: {},
+  scope: { siteId: 's_mx_scl', projectId: 'pr_scl_24', phaseId: 'ph_scl24_2' },
+  filter: 'all'
+};
+
+function navigate(route, params = {}) {
+  state.route = route;
+  state.params = params;
+  // If navigating into a punch, update scope
+  if (route === 'detail') {
+    const p = DATA.punches.find(x => x.id === params.id);
+    if (p) state.scope = { siteId: p.siteId, projectId: p.projectId, phaseId: p.phaseId };
+  }
+  render();
+  document.querySelector('#app .page')?.scrollTo({ top: 0 });
+}
+
+// ── ICONS (inline SVG, small set) ────────────────────────────────────
+const I = {
+  back:    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
+  more:    '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>',
+  search:  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.6" y2="16.6"/></svg>',
+  map:     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 9 18 15 22 23 18 23 2 15 6 9 2 1 6"/><line x1="9" y1="2" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="22"/></svg>',
+  layers:  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+  plus:    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  list:    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
+  user:    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+  camera:  '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h3l2-3h8l2 3h3v11H3z"/><circle cx="12" cy="13" r="3.6"/></svg>',
+  chev_r:  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>',
+  arrow_r: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+  x:       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  check:   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+  send:    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+  download:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  flag:    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="22" x2="4" y2="3"/><path d="M4 4h11l-1.5 3L15 10H4"/></svg>',
+  flame:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c4 0 7-3 7-7 0-3-2-5-3-7-1 2-2 2-3 1 0-3-2-5-2-7-1 3-6 6-6 12 0 4 3 8 7 8z"/></svg>'
+};
+
+// ── HELPERS ──────────────────────────────────────────────────────────
+function h(strings, ...vals) {
+  // Simple tagged template — no escaping; we control all inputs.
+  return strings.reduce((acc, s, i) => acc + s + (i < vals.length ? (vals[i] ?? '') : ''), '');
+}
+function el(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html.trim();
+  return div.firstElementChild;
+}
+function escape(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function $(id) { return document.getElementById(id); }
+
+function timeAgo(iso) {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'recién';
+  if (m < 60) return m + 'm';
+  const hr = Math.floor(m / 60);
+  if (hr < 24) return hr + 'h';
+  return Math.floor(hr / 24) + 'd';
+}
+
+function daysOverdue(iso) {
+  if (!iso) return null;
+  const diff = Math.round((new Date(iso).getTime() - new Date('2026-05-21').getTime()) / 86400000);
+  return diff;
+}
+
+function toast(message, duration = 2200) {
+  const host = $('toasts');
+  const t = el(`<div class="toast">${escape(message)}</div>`);
+  host.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity 200ms ease';
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 220);
+  }, duration);
+}
+
+function getSite(id)    { return DATA.sites.find(s => s.id === id); }
+function getProject(id) { return DATA.projects.find(p => p.id === id); }
+function getPhase(id)   { return DATA.phases.find(p => p.id === id); }
+function getCategory(id){ return DATA.categories.find(c => c.id === id); }
+
+function getScopeCodes() {
+  return {
+    site: getSite(state.scope.siteId)?.code ?? '—',
+    project: getProject(state.scope.projectId)?.code ?? '—',
+    phase: getPhase(state.scope.phaseId)?.code ?? '—'
+  };
+}
+
+function generatePhotoBg(seed) {
+  const hue = (seed.charCodeAt(0) * 37 + seed.charCodeAt(1) * 13) % 360;
+  return `linear-gradient(135deg, hsl(${hue} 22% 30%) 0%, hsl(${hue} 14% 18%) 100%)`;
+}
+
+// ── PAGE: LOGIN ──────────────────────────────────────────────────────
+function renderLogin() {
+  return h`
+    <div class="page no-nav" style="padding: 0;">
+      <div class="login">
+        <div class="hero">
+          <div class="brand">
+            <div class="logo">P</div>
+            <span class="corp">Mercado Libre</span>
+          </div>
+          <div>
+            <h2>Punch list para commissioning.</h2>
+            <p style="margin: 8px 0 0; font-size: 14px; color: rgba(10,0,128,0.78); max-width: 320px;">
+              Captura, asigna y cierra punches en sitios LATAM. Offline-first.
+            </p>
+          </div>
+        </div>
+        <div class="card-bottom">
+          <button class="btn-primary" data-action="login">
+            Entrar · Google Sheets + Verdi Flow
+          </button>
+
+          <p style="text-align: center; margin: 14px 0 0; font-size: 11px; color: var(--g75);">
+            Identidad corporativa Mercado Libre · SSO
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── PAGE: MAP (LATAM sites) ──────────────────────────────────────────
+function renderMap() {
+  const totalOverdue = DATA.sites.reduce((s, x) => s + x.overdue, 0);
+  return h`
+    <header class="appbar">
+      <span class="iconbtn">${I.search}</span>
+      <div class="ttl">
+        <h1>Sitios LATAM</h1>
+        <p class="sub">${DATA.sites.length} sitios · ${totalOverdue} vencidos</p>
+      </div>
+      <span class="sync"><span class="dot"></span>En vivo</span>
+    </header>
+    <div class="page">
+      <div class="map-canvas">
+        <svg viewBox="0 0 100 130" preserveAspectRatio="xMidYMid meet" aria-hidden>
+          <!-- Simplified LATAM silhouette -->
+          <path d="M 20 18 L 35 14 L 40 22 L 38 30 L 30 34 L 18 32 L 12 22 Z" fill="#E4E4EA" stroke="#CCC" stroke-width="0.3"/>
+          <path d="M 28 30 L 32 32 L 35 38 L 33 42 L 28 40 Z" fill="#E4E4EA" stroke="#CCC" stroke-width="0.3"/>
+          <path d="M 30 38 L 38 36 L 42 42 L 45 50 L 42 56 L 38 60 L 32 58 L 28 50 Z" fill="#E4E4EA" stroke="#CCC" stroke-width="0.3"/>
+          <path d="M 40 50 L 55 48 L 65 56 L 70 70 L 65 82 L 58 90 L 50 92 L 44 85 L 42 70 Z" fill="#E4E4EA" stroke="#CCC" stroke-width="0.3"/>
+          <path d="M 38 70 L 45 72 L 50 85 L 48 95 L 42 100 L 38 92 L 36 80 Z" fill="#E4E4EA" stroke="#CCC" stroke-width="0.3"/>
+        </svg>
+        ${DATA.sites.map(s => {
+          const color = s.status === 'active' ? '#00A650' : s.status === 'commissioning' ? '#F39C12' : s.status === 'planning' ? '#999' : '#0A0080';
+          return `<button class="site-dot" data-action="open-site" data-id="${s.id}" aria-label="${escape(s.code)}"
+            style="left: ${s.pos.x}%; top: ${s.pos.y}%; width: 16px; height: 16px; background: ${color}; box-shadow: 0 0 0 1px rgba(0,0,0,0.18);"></button>`;
+        }).join('')}
+      </div>
+      <div class="legend">
+        <span class="item active">Activo</span>
+        <span class="item commissioning">Commissioning</span>
+        <span class="item planning">Planning</span>
+      </div>
+      <div class="section">
+        <p class="eyebrow">Sitios</p>
+      </div>
+      ${DATA.sites.map(s => h`
+        <div class="site-row" data-action="open-site" data-id="${s.id}">
+          <div class="flag">${escape(s.flag)}</div>
+          <div class="body">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="code-mono">${escape(s.code)}</span>
+              <span class="health-dot h-${HEALTH_BY_STATUS[s.status]}"></span>
+            </div>
+            <div class="title">${escape(s.name)} · ${escape(s.city)}</div>
+            <div class="desc">${s.open} abiertos · ${s.critical} críticos · ${s.overdue} vencidos</div>
+          </div>
+          <span style="color: var(--g50);">${I.chev_r}</span>
+        </div>
+      `).join('')}
+    </div>
+    ${renderBotNav('map')}
+  `;
+}
+
+// ── PAGE: SITE DETAIL ────────────────────────────────────────────────
+function renderSite() {
+  const site = getSite(state.params.id);
+  if (!site) return '';
+  const projects = DATA.projects.filter(p => p.siteId === site.id);
+  return h`
+    <header class="appbar">
+      <button class="iconbtn" data-action="back">${I.back}</button>
+      <div class="ttl">
+        <h1>${escape(site.name)}</h1>
+        <p class="sub">${escape(site.code)} · ${escape(site.country)}</p>
+      </div>
+      <span class="sync"><span class="dot"></span>En vivo</span>
+      <button class="iconbtn">${I.more}</button>
+    </header>
+    <div class="page">
+      <div class="kpi-grid" style="padding-top: 12px;">
+        <div class="kpi"><div class="label">Abiertos</div><div class="val">${site.open}</div></div>
+        <div class="kpi ${site.critical > 0 ? 'tone-neg' : ''}"><div class="label">Críticos</div><div class="val">${site.critical}</div></div>
+        <div class="kpi ${site.overdue > 0 ? 'tone-warn' : ''}"><div class="label">Vencidos</div><div class="val">${site.overdue}</div></div>
+        <div class="kpi"><div class="label">Proyectos</div><div class="val">${projects.length}</div></div>
+      </div>
+      <div class="section"><p class="eyebrow">Proyectos</p></div>
+      ${projects.map(p => h`
+        <div class="site-row" data-action="open-phase" data-pid="${p.id}">
+          <div class="flag" style="background: ${p.status === 'commissioning' ? 'var(--yellow)' : 'var(--blue)'}; color: ${p.status === 'commissioning' ? 'var(--blue)' : 'var(--white)'};">${escape(p.code.slice(0, 2))}</div>
+          <div class="body">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="code-mono">${escape(p.code)}</span>
+              <span class="status-pill status-${p.status === 'commissioning' ? 'in_progress' : p.status === 'active' ? 'assigned' : 'open'}">${escape(p.status)}</span>
+            </div>
+            <div class="title">${escape(p.name)}</div>
+            <div class="desc">${escape(p.system)} · progreso ${p.progress}%</div>
+          </div>
+          <span style="color: var(--g50);">${I.chev_r}</span>
+        </div>
+      `).join('')}
+    </div>
+    ${renderBotNav('map')}
+  `;
+}
+
+// ── PAGE: PHASE / PUNCH LIST ────────────────────────────────────────
+function renderPhase() {
+  const phase = getPhase(state.scope.phaseId);
+  const project = getProject(state.scope.projectId);
+  const site = getSite(state.scope.siteId);
+  const phasePunches = DATA.punches.filter(p => p.phaseId === phase.id);
+  const open = phasePunches.filter(p => !['closed', 'rejected'].includes(p.status));
+  const critical = open.filter(p => p.priority === 'high');
+  const overdue = open.filter(p => daysOverdue(p.dueDate) < 0);
+
+  const filtered = filterPunches(phasePunches, state.filter);
+
+  return h`
+    <header class="appbar">
+      <button class="iconbtn" data-action="back">${I.back}</button>
+      <div class="ttl">
+        <h1>${escape(phase.code)} ${escape(phase.name)}</h1>
+        <p class="sub">${escape(site.code)} · ${escape(project.code)}</p>
+      </div>
+      <span class="sync"><span class="dot"></span>En vivo</span>
+      <button class="iconbtn" data-action="export">${I.download}</button>
+    </header>
+    ${renderScopeStrip()}
+    <div class="page">
+      <div class="kpi-grid" style="padding-top: 12px;">
+        <div class="kpi"><div class="label">Abiertos</div><div class="val">${open.length}</div></div>
+        <div class="kpi ${critical.length > 0 ? 'tone-neg' : ''}"><div class="label">Críticos</div><div class="val">${critical.length}</div></div>
+        <div class="kpi ${overdue.length > 0 ? 'tone-warn' : ''}"><div class="label">Vencidos</div><div class="val">${overdue.length}</div></div>
+        <div class="kpi tone-pos"><div class="label">Progreso</div><div class="val">${phase.progress}%</div></div>
+      </div>
+
+      <div style="padding: 4px 12px 8px; display: flex; gap: 6px; overflow-x: auto;">
+        ${['all', 'open', 'critical', 'mine'].map(f => h`
+          <button class="chip ${state.filter === f ? 'active' : ''}" data-action="filter" data-f="${f}">
+            ${f === 'all' ? 'Todos' : f === 'open' ? 'Abiertos' : f === 'critical' ? 'Críticos' : 'Míos'}
+            <span style="opacity: 0.7;">${filterCount(phasePunches, f)}</span>
+          </button>
+        `).join('')}
+      </div>
+
+      <div style="background: var(--white);">
+        ${filtered.map(p => renderPunchRow(p)).join('')}
+      </div>
+    </div>
+    ${renderBotNav('scope')}
+  `;
+}
+
+function filterPunches(arr, f) {
+  if (f === 'open')     return arr.filter(p => !['closed', 'rejected'].includes(p.status));
+  if (f === 'critical') return arr.filter(p => p.priority === 'high' && !['closed', 'rejected'].includes(p.status));
+  if (f === 'mine')     return arr.filter(p => p.assigneeId === DATA.user.id || p.mlRespName === DATA.user.name);
+  return arr;
+}
+function filterCount(arr, f) { return filterPunches(arr, f).length; }
+
+function renderPunchRow(p) {
+  const over = daysOverdue(p.dueDate);
+  const isOverdue = over !== null && over < 0 && !['closed', 'rejected'].includes(p.status);
+  return h`
+    <div class="punch-row ${isOverdue ? 'overdue-stripe' : ''}" data-action="open-punch" data-id="${p.id}">
+      <div class="priority-bar priority-${p.priority}" style="height: auto; min-height: 100%; margin-left: ${isOverdue ? '4px' : '0'};"></div>
+      <div class="body">
+        <div class="meta-line">
+          <span class="code-mono">${escape(p.code)}</span>
+          ${p.qualPhase ? `<span class="qual-pill">${escape(p.qualPhase)}</span>` : ''}
+          <span class="status-pill status-${p.status}">${escape(STATUS_LABEL[p.status])}</span>
+          ${p.priority === 'high' && !['closed', 'rejected'].includes(p.status) ? '<span style="color: var(--neg); display: inline-flex; align-items: center; gap: 2px; font-size: 9px; font-weight: 700;">' + I.flame + ' CRÍT</span>' : ''}
+        </div>
+        <div class="title">${escape(p.title)}</div>
+        <div class="footer">
+          ${p.assigneeName ? '<span>' + escape(p.assigneeName) + (p.assigneeOrg ? ' · ' + escape(p.assigneeOrg) : '') + '</span>' : '<span style="color: var(--g50);">Sin asignar</span>'}
+          <span>·</span>
+          <span>${timeAgo(p.updatedAt)}</span>
+          ${p.protoCode ? '<span>·</span><span style="font-family: var(--mono); color: var(--blue); font-size: 10px; border: 1px solid var(--blue); padding: 0 4px; border-radius: 2px;">' + escape(p.protoCode) + '</span>' : ''}
+          ${isOverdue ? '<span>·</span><span style="color: var(--neg); font-weight: 700;">Vencido ' + Math.abs(over) + 'd</span>' : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderScopeStrip() {
+  const codes = getScopeCodes();
+  return h`
+    <div class="scope-strip">
+      <span class="lbl">SCOPE</span>
+      <span class="scope-pill">${escape(codes.site)}</span>
+      <span class="sep">›</span>
+      <span class="scope-pill">${escape(codes.project)}</span>
+      <span class="sep">›</span>
+      <span class="scope-pill">${escape(codes.phase)}</span>
+    </div>
+  `;
+}
+
+// ── PAGE: PUNCH DETAIL ───────────────────────────────────────────────
+function renderDetail() {
+  const p = DATA.punches.find(x => x.id === state.params.id);
+  if (!p) return renderPhase();
+  const site = getSite(p.siteId);
+  const project = getProject(p.projectId);
+  const phase = getPhase(p.phaseId);
+
+  const currentIdx = STATUS_ORDER.indexOf(p.status);
+  const railHtml = STATUS_ORDER.map((s, i) => {
+    const cls = i < currentIdx ? 'past' : i === currentIdx ? 'active' : 'future';
+    return `
+      <div class="rail-step ${cls}">
+        <div class="node">${STATUS_ABBR[s]}</div>
+        <div class="lab">${STATUS_LABEL[s]}</div>
+        <div class="dur">${cls === 'active' ? 'Ahora' : cls === 'past' ? Math.floor(Math.random() * 24) + 'h' : '—'}</div>
+      </div>
+      ${i < STATUS_ORDER.length - 1 ? `<div class="rail-connector ${i < currentIdx ? 'done' : ''}"></div>` : ''}
+    `;
+  }).join('');
+
+  const photos = Array.from({ length: p.photoCount || 0 });
+  const comments = DATA.comments[p.id] || [];
+
+  const cta = nextActionCTA(p.status);
+
+  return h`
+    <header class="appbar">
+      <button class="iconbtn" data-action="back">${I.back}</button>
+      <div class="ttl" style="display: flex; align-items: center; gap: 8px;">
+        <span class="code-mono" style="font-size: 14px;">${escape(p.code)}</span>
+        <span class="status-pill status-${p.status}">${escape(STATUS_LABEL[p.status])}</span>
+      </div>
+      <span class="sync"><span class="dot"></span>En vivo</span>
+      <button class="iconbtn">${I.more}</button>
+    </header>
+    ${renderScopeStrip()}
+    <div class="page">
+      <div class="status-rail">
+        <div class="rail-steps">${railHtml}</div>
+      </div>
+
+      <div class="card" style="margin: 10px 16px;">
+        <h1 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; line-height: 1.3;">${escape(p.title)}</h1>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <span class="qual-pill" style="height: 22px;">${escape(p.qualPhase)}</span>
+          <span style="background: var(--g05); border: 1px solid var(--g10); color: var(--blue); padding: 2px 8px; font-size: 11px; font-weight: 600; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;">
+            ${escape(getCategory(p.categoryId)?.name || '')}
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700;">
+            <span class="pri-bar priority-${p.priority}"></span>${escape(PRIORITY_LABEL[p.priority])}
+          </span>
+        </div>
+      </div>
+
+      ${p.photoCount > 0 ? h`
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 8px;">Hallazgo · ${p.photoCount} fotos</p>
+        <div class="photo-rail">
+          ${photos.map((_, i) => `
+            <div class="photo-tile" style="background: ${generatePhotoBg(p.code + i)};">
+              <div style="position: absolute; left: 6px; top: 6px; color: rgba(255,255,255,0.92); font-size: 8px; font-weight: 700; font-family: var(--mono);">${p.code}·DET·${String(i+1).padStart(2,'0')}</div>
+              <div style="position: absolute; left: 20%; top: 28%; right: 20%; bottom: 20%; border: 1.5px solid rgba(255,255,255,0.55);"></div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 8px;">Descripción</p>
+        <p style="margin: 0; font-size: 14px; line-height: 1.55; white-space: pre-wrap;">${escape(p.description)}</p>
+      </div>
+
+      ${p.suggestedSolution ? h`
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 8px;">Solución sugerida</p>
+        <p style="margin: 0; font-size: 14px; line-height: 1.55;">${escape(p.suggestedSolution)}</p>
+      </div>
+      ` : ''}
+
+      ${p.protoCode ? h`
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 8px;">Trazabilidad de protocolo</p>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="background: var(--white); border: 1px solid var(--blue); color: var(--blue); padding: 4px 8px; font-family: var(--mono); font-size: 11px; font-weight: 700; border-radius: 3px;">${escape(p.protoCode)}</span>
+          <span style="font-size: 13px; font-weight: 600;">${escape(p.protoName || '')}</span>
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 12px;">Responsables</p>
+        ${renderResponsible('Resp. MELI', p.mlRespName)}
+        ${renderResponsible('Vendor', p.vendorName)}
+        ${renderResponsible('Inspeccionado por', p.inspectorName)}
+      </div>
+
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 12px;">Actividad</p>
+        ${comments.length === 0 ? '<p style="font-size: 13px; color: var(--g75);">Sin comentarios.</p>' :
+          comments.map(c => h`
+            <div class="activity">
+              <span class="avatar ${c.role === 'vendor' ? 'vendor' : ''}">${escape((c.actor || 'X').split(' ').map(w => w[0]).slice(0,2).join(''))}</span>
+              <div class="text">
+                <b>${escape(c.actor)}</b> · ${escape(c.body)}
+              </div>
+              <span class="time">${escape(c.at)}</span>
+            </div>
+          `).join('')
+        }
+      </div>
+    </div>
+    <div class="sticky-actions">
+      <button class="btn-blue" data-action="advance-status" data-id="${p.id}" data-next="${cta.next}">
+        ${escape(cta.label)}
+      </button>
+    </div>
+  `;
+}
+
+function renderResponsible(label, name) {
+  return h`
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--g10);">
+      <span style="width: 32px; height: 32px; border-radius: 999px; background: ${name ? 'var(--blue)' : 'var(--g10)'}; color: ${name ? 'var(--white)' : 'var(--g75)'}; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 11px;">${name ? escape(name.split(' ').map(w => w[0]).slice(0,2).join('')) : '?'}</span>
+      <div style="flex: 1; min-width: 0;">
+        <div style="font-size: 10px; font-weight: 700; color: var(--g75); text-transform: uppercase; letter-spacing: 0.1em;">${escape(label)}</div>
+        <div style="font-size: 14px; font-weight: 600;">${name ? escape(name) : 'Sin asignar'}</div>
+      </div>
+    </div>
+  `;
+}
+
+function nextActionCTA(status) {
+  switch (status) {
+    case 'open':             return { label: 'Asignar y empezar', next: 'assigned' };
+    case 'assigned':         return { label: 'Empezar trabajo',   next: 'in_progress' };
+    case 'in_progress':      return { label: 'Marcar listo para revisión', next: 'ready_for_review' };
+    case 'ready_for_review': return { label: 'Aprobar y cerrar',  next: 'closed' };
+    case 'closed':           return { label: 'Reabrir punch',     next: 'open' };
+    default:                 return { label: 'Cambiar estado',    next: 'assigned' };
+  }
+}
+
+// ── PAGE: CREATE PUNCH ───────────────────────────────────────────────
+function renderCreate() {
+  return h`
+    <header class="appbar">
+      <button class="iconbtn" data-action="back">${I.back}</button>
+      <div class="ttl">
+        <h1>Nuevo punch</h1>
+        <p class="sub">Crear hallazgo · scope actual</p>
+      </div>
+      <button class="iconbtn">${I.more}</button>
+    </header>
+    ${renderScopeStrip()}
+    <form class="page" data-form="create-punch">
+      <div class="form-section">
+        <h3>Hallazgo</h3>
+        <div class="field">
+          <label>Fotos</label>
+          <div class="photo-rail">
+            <button type="button" class="photo-add" data-action="add-photo">
+              ${I.camera}<span>Tomar foto</span>
+            </button>
+            <div class="photo-tile" style="background: ${generatePhotoBg('demo')};"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-title">Título</label>
+          <input id="f-title" type="text" placeholder="¿Qué viste?" required>
+        </div>
+        <div class="field">
+          <label for="f-desc">Descripción</label>
+          <textarea id="f-desc" placeholder="Detalles, contexto, dónde…" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label>Categoría</label>
+          <div class="chip-row">
+            ${DATA.categories.map((c, i) => `
+              <button type="button" class="chip ${i === 1 ? 'active' : ''}" data-toggle="cat" data-id="${c.id}">${escape(c.name)}</button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="field">
+          <label>Prioridad</label>
+          <div class="segmented" style="grid-template-columns: repeat(3, 1fr);">
+            <button type="button" data-toggle="pri" data-v="low"><span class="pri-bar priority-low"></span>Baja</button>
+            <button type="button" class="active" data-toggle="pri" data-v="medium"><span class="pri-bar priority-medium"></span>Media</button>
+            <button type="button" data-toggle="pri" data-v="high"><span class="pri-bar priority-high"></span>Alta</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>IQ / OQ / PQ</label>
+          <div class="segmented" style="grid-template-columns: repeat(3, 1fr);">
+            <button type="button" class="active" data-toggle="qual" data-v="IQ">IQ</button>
+            <button type="button" data-toggle="qual" data-v="OQ">OQ</button>
+            <button type="button" data-toggle="qual" data-v="PQ">PQ</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3>Responsables</h3>
+        <div class="field">
+          <label for="f-ml">Responsable MELI</label>
+          <input id="f-ml" type="text" placeholder="lucia.h@mercadolibre.com">
+        </div>
+        <div class="field">
+          <label for="f-vendor">Responsable vendor</label>
+          <input id="f-vendor" type="text" placeholder="Daifuku / Vanderlande / …">
+        </div>
+        <div class="field">
+          <label for="f-due">Vence</label>
+          <input id="f-due" type="date">
+        </div>
+      </div>
+    </form>
+    <div class="sticky-actions">
+      <button type="button" class="btn-ghost" data-action="back">Cancelar</button>
+      <button type="button" class="btn-blue" data-action="submit-punch">Crear punch</button>
+    </div>
+  `;
+}
+
+// ── PAGE: MIS PUNCHES (cross-scope inbox) ────────────────────────────
+function renderInbox() {
+  const mine = DATA.punches.filter(p =>
+    p.assigneeId === DATA.user.id || p.mlRespName === DATA.user.name
+  );
+  return h`
+    <header class="appbar">
+      <button class="iconbtn">${I.search}</button>
+      <div class="ttl">
+        <h1>Mis punches</h1>
+        <p class="sub">Cruza sitios · ${mine.length} asignados</p>
+      </div>
+      <span class="sync"><span class="dot"></span>En vivo</span>
+    </header>
+    <div class="page">
+      <div style="padding: 8px 12px; display: flex; gap: 6px; overflow-x: auto;">
+        <button class="chip active">Asignados <span style="opacity: 0.7;">${mine.length}</span></button>
+        <button class="chip">Creados</button>
+        <button class="chip">Siguiendo</button>
+        <button class="chip">Vencidos</button>
+      </div>
+      <div style="background: var(--white);">
+        ${mine.map(p => renderPunchRowWithScope(p)).join('')}
+      </div>
+    </div>
+    ${renderBotNav('mine')}
+  `;
+}
+
+function renderPunchRowWithScope(p) {
+  const site = getSite(p.siteId);
+  const project = getProject(p.projectId);
+  const phase = getPhase(p.phaseId);
+  return h`
+    <div class="punch-row" data-action="open-punch" data-id="${p.id}">
+      <div class="priority-bar priority-${p.priority}" style="height: auto; min-height: 100%;"></div>
+      <div class="body">
+        <div class="meta-line">
+          <span class="code-mono">${escape(p.code)}</span>
+          <span class="qual-pill">${escape(p.qualPhase)}</span>
+          <span class="status-pill status-${p.status}">${escape(STATUS_LABEL[p.status])}</span>
+        </div>
+        <div class="title">${escape(p.title)}</div>
+        <div class="footer" style="font-family: var(--mono); font-size: 10px;">
+          <span style="background: var(--g05); border: 1px solid var(--g10); padding: 1px 4px; border-radius: 2px;">${escape(site.code)}</span>
+          <span>›</span>
+          <span style="background: var(--g05); border: 1px solid var(--g10); padding: 1px 4px; border-radius: 2px;">${escape(project.code)}</span>
+          <span>›</span>
+          <span style="background: var(--g05); border: 1px solid var(--g10); padding: 1px 4px; border-radius: 2px;">${escape(phase.code)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── PAGE: ACCOUNT ────────────────────────────────────────────────────
+function renderAccount() {
+  return h`
+    <header class="appbar">
+      <div class="ttl">
+        <h1>Cuenta</h1>
+        <p class="sub">${escape(DATA.user.email)}</p>
+      </div>
+    </header>
+    <div class="page">
+      <div class="card" style="margin: 12px 16px; display: flex; align-items: center; gap: 12px;">
+        <span style="width: 56px; height: 56px; border-radius: 999px; background: var(--blue); color: var(--white); display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 20px;">${escape(DATA.user.initials)}</span>
+        <div>
+          <div style="font-size: 16px; font-weight: 700;">${escape(DATA.user.name)}</div>
+          <div style="font-size: 12px; color: var(--g75);">${escape(DATA.user.email)}</div>
+          <span style="display: inline-block; margin-top: 6px; height: 22px; padding: 0 8px; background: var(--blue); color: var(--white); border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 22px;">Operador</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 10px;">Scope fijado</p>
+        ${(() => {
+          const codes = getScopeCodes();
+          return `<div style="font-family: var(--mono); font-size: 13px; color: var(--blue); font-weight: 700;">${escape(codes.site)} › ${escape(codes.project)} › ${escape(codes.phase)}</div>`;
+        })()}
+      </div>
+
+      <div class="card" style="margin: 0 16px 10px;">
+        <p class="eyebrow" style="margin-bottom: 10px;">Datos locales</p>
+        <div style="font-size: 13px; color: var(--g75);">14 MB en caché</div>
+      </div>
+
+      <div style="padding: 16px;">
+        <button class="btn-secondary" data-action="logout" style="color: var(--neg); border-color: var(--neg);">Cerrar sesión</button>
+      </div>
+    </div>
+    ${renderBotNav('account')}
+  `;
+}
+
+// ── BOTTOM NAV ───────────────────────────────────────────────────────
+function renderBotNav(active) {
+  const tabs = [
+    { id: 'map',     label: 'Mapa',     icon: I.map,    route: 'map' },
+    { id: 'scope',   label: 'Mi scope', icon: I.layers, route: 'phase' },
+    { id: 'new',     label: 'Nuevo',    icon: I.plus,   route: 'create', primary: true },
+    { id: 'mine',    label: 'Mis',      icon: I.list,   route: 'inbox' },
+    { id: 'account', label: 'Cuenta',   icon: I.user,   route: 'account' }
+  ];
+  return h`
+    <nav class="botnav">
+      <ul>
+        ${tabs.map(t => h`
+          <li>
+            <button class="${active === t.id ? 'active' : ''} ${t.primary ? 'primary' : ''}" data-action="nav" data-route="${t.route}">
+              ${t.primary ? '<span class="fab">' + t.icon + '</span>' : t.icon}
+              <span class="lab">${escape(t.label)}</span>
+            </button>
+          </li>
+        `).join('')}
+      </ul>
+    </nav>
+  `;
+}
+
+// ── RENDER DISPATCHER ────────────────────────────────────────────────
+function render() {
+  const app = $('app');
+  if (!state.authed) {
+    app.innerHTML = renderLogin();
+    bind(app);
+    return;
+  }
+  let body = '';
+  switch (state.route) {
+    case 'map':     body = renderMap();     break;
+    case 'site':    body = renderSite();    break;
+    case 'phase':   body = renderPhase();   break;
+    case 'detail':  body = renderDetail();  break;
+    case 'create':  body = renderCreate();  break;
+    case 'inbox':   body = renderInbox();   break;
+    case 'account': body = renderAccount(); break;
+    default:        body = renderMap();
+  }
+  app.innerHTML = body;
+  bind(app);
+}
+
+// ── EVENT BINDING ────────────────────────────────────────────────────
+function bind(root) {
+  root.querySelectorAll('[data-action]').forEach(elt => {
+    elt.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const action = elt.dataset.action;
+      const id = elt.dataset.id;
+      const route = elt.dataset.route;
+      const next = elt.dataset.next;
+
+      switch (action) {
+        case 'login':
+          // Mostrar loading
+          $('app').innerHTML = '<div class="loading-screen"><div class="spinner"></div><p>Cargando desde Drive…</p></div>';
+          try {
+            const [sitios, proyectos, fases, categorias, punches] = await Promise.all([
+              SheetsAPI.read(CONFIG.CSV_SITIOS),
+              SheetsAPI.read(CONFIG.CSV_PROYECTOS),
+              SheetsAPI.read(CONFIG.CSV_FASES),
+              SheetsAPI.read(CONFIG.CSV_CATEGORIAS),
+              SheetsAPI.read(CONFIG.CSV_PUNCHES),
+            ]);
+            if (sitios.length)     DATA.sites      = sitios.map(mapSitio);
+            if (proyectos.length)  DATA.projects   = proyectos.map(mapProyecto);
+            if (fases.length)      DATA.phases     = fases.map(mapFase);
+            if (categorias.length) DATA.categories = categorias.map(mapCategoria);
+            if (punches.length)    DATA.punches    = punches.map(mapPunch);
+            // Recalcular KPIs de sitios
+            DATA.sites.forEach(s => {
+              const sp = DATA.punches.filter(p => p.siteId === s.id);
+              s.open     = sp.filter(p => !['closed','rejected'].includes(p.status)).length;
+              s.critical = sp.filter(p => p.priority === 'high' && !['closed','rejected'].includes(p.status)).length;
+              s.overdue  = sp.filter(p => { const d = daysOverdue(p.dueDate); return d !== null && d < 0 && !['closed','rejected'].includes(p.status); }).length;
+            });
+            // Scope inicial
+            if (DATA.sites.length && !state.scope.siteId) {
+              const s = DATA.sites[0];
+              state.scope.siteId = s.id;
+              const proj = DATA.projects.find(p => p.siteId === s.id);
+              if (proj) { state.scope.projectId = proj.id; const fase = DATA.phases.find(f => f.projectId === proj.id); if (fase) state.scope.phaseId = fase.id; }
+            }
+            try { localStorage.setItem('pl_cache', JSON.stringify(DATA)); } catch(e) {}
+            toast('✓ Datos cargados desde Drive');
+          } catch(err) {
+            console.warn('CSV load failed:', err);
+            const cached = localStorage.getItem('pl_cache');
+            if (cached) { try { Object.assign(DATA, JSON.parse(cached)); toast('Sin conexión · mostrando caché'); } catch(e) {} }
+            else { toast('Sin conexión · modo demo'); }
+          }
+          state.authed = true;
+          state.route = 'map';
+          render();
+          break;
+        case 'logout':
+          state.authed = false;
+          state.route = 'login';
+          render();
+          break;
+        case 'back':
+          history.back();
+          // Fallback: navigate based on current route
+          if (state.route === 'detail') navigate('phase');
+          else if (state.route === 'site') navigate('map');
+          else if (state.route === 'phase') navigate('map');
+          else if (state.route === 'create') navigate('phase');
+          break;
+        case 'nav':
+          navigate(route);
+          break;
+        case 'open-site':
+          // Update scope to this site's first project + phase
+          const site = getSite(id);
+          const firstProj = DATA.projects.find(p => p.siteId === id);
+          if (firstProj) state.scope.projectId = firstProj.id;
+          state.scope.siteId = id;
+          const firstPhase = DATA.phases.find(p => p.projectId === state.scope.projectId);
+          if (firstPhase) state.scope.phaseId = firstPhase.id;
+          navigate('site', { id });
+          break;
+        case 'open-phase':
+          state.scope.projectId = elt.dataset.pid;
+          const ph = DATA.phases.find(p => p.projectId === elt.dataset.pid);
+          if (ph) state.scope.phaseId = ph.id;
+          navigate('phase');
+          break;
+        case 'open-punch':
+          navigate('detail', { id });
+          break;
+        case 'advance-status':
+          const p = DATA.punches.find(x => x.id === id);
+          if (p) {
+            p.status = next;
+            p.updatedAt = new Date().toISOString();
+            toast('Estado: ' + STATUS_LABEL[next]);
+            savePunch(p, false);
+            render();
+          }
+          break;
+        case 'filter':
+          state.filter = elt.dataset.f;
+          render();
+          break;
+        case 'add-photo':
+          toast('Cámara abierta · función real conecta con Drive');
+          break;
+        case 'submit-punch':
+          // Pull form values
+          const title = root.querySelector('#f-title')?.value?.trim();
+          if (!title) { toast('El título es requerido'); return; }
+          const desc = root.querySelector('#f-desc')?.value?.trim() || '';
+          const newP = {
+            id: 'p_new_' + Date.now(),
+            code: 'P-' + (1050 + DATA.punches.length),
+            title, description: desc,
+            siteId: state.scope.siteId, projectId: state.scope.projectId, phaseId: state.scope.phaseId,
+            status: 'open',
+            priority: root.querySelector('[data-toggle="pri"].active')?.dataset.v || 'medium',
+            qualPhase: root.querySelector('[data-toggle="qual"].active')?.dataset.v || 'IQ',
+            categoryId: root.querySelector('[data-toggle="cat"].active')?.dataset.id || 'cat_elec',
+            mlRespName: root.querySelector('#f-ml')?.value || DATA.user.name,
+            vendorName: root.querySelector('#f-vendor')?.value || '',
+            dueDate: root.querySelector('#f-due')?.value || null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            photoCount: 1, commentCount: 0
+          };
+          DATA.punches.unshift(newP);
+          await savePunch(newP, true);
+          toast('Punch creado: ' + newP.code);
+          navigate('detail', { id: newP.id });
+          break;
+        case 'export':
+          toast('Generando reporte… (función real → DOCX/PDF)');
+          break;
+        case 'toggle':
+          // Single-select chip groups
+          const group = elt.dataset.toggle;
+          const siblings = root.querySelectorAll('[data-toggle="' + group + '"]');
+          siblings.forEach(s => s.classList.remove('active'));
+          elt.classList.add('active');
+          break;
+      }
+    });
+  });
+
+  // Toggle buttons (chips that don't have other actions)
+  root.querySelectorAll('[data-toggle]').forEach(elt => {
+    if (elt.dataset.action) return;
+    elt.addEventListener('click', () => {
+      const group = elt.dataset.toggle;
+      const siblings = root.querySelectorAll('[data-toggle="' + group + '"]');
+      siblings.forEach(s => s.classList.remove('active'));
+      elt.classList.add('active');
+    });
+  });
+}
+
+// ── BOOT ─────────────────────────────────────────────────────────────
+render();
+
+// PWA hint (no service worker registered; this is standalone)
+console.info('Punch List PWA · Google Sheets + Verdi Flow · 2026-06-04');
+
+// ── SERVICE WORKER (cache offline) ───────────────────────────────────
+if ('serviceWorker' in navigator) {
+  const SW_CODE = `
+const CACHE = 'punchlist-v1';
+const SHELL = ['./'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(keys =>
+    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+  ));
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', e => {
+  // Solo cachear GET del mismo origen; pasar requests de Sheets/Verdi sin tocar
+  if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  if (url.hostname !== self.location.hostname) return;
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      const fresh = fetch(e.request).then(res => {
+        if (res.ok) caches.open(CACHE).then(c => c.put(e.request, res.clone()));
+        return res;
+      });
+      return cached || fresh;
+    })
+  );
+});
+`;
+  const blob = new Blob([SW_CODE], { type: 'application/javascript' });
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl)
+    .then(() => console.info('SW registrado · app disponible offline'))
+    .catch(e => console.warn('SW no registrado:', e));
+}
+</script>
+</body>
+</html>
