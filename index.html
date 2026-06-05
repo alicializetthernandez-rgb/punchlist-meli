@@ -269,47 +269,47 @@
 // Backend: Google Sheets (lectura) + Verdi Flow webhook (escritura)
 // ════════════════════════════════════════════════════════════════════
 
-// ════════════════════════════════════════════════════════════════════
-// ⚙️  CONFIGURACIÓN — editar estos 4 valores
-// ════════════════════════════════════════════════════════════════════
+// ── ⚙️  CONFIGURACIÓN ────────────────────────────────────────────────
 const CONFIG = {
-  // IDs de las hojas creadas en tu Drive (ya creadas por Claude)
-  SHEETS_ID_PUNCHES:   '12hxbUG8sHIUYbso2gTj9f556xYz04z4eNhLXxzM2ygM',
-  SHEETS_ID_CATALOGOS: '1js53Q3e0-HU5NMlbZbMr6ZjVwP3o2hoeU0Kbeig1064',
-  FOTOS_FOLDER_ID:     '1ULOAoHxfaroWHiBHpMZpmgvZ0l_3mdHb',
-
-  // 1. console.cloud.google.com → Sheets API → Credenciales → Crear API Key
-  GOOGLE_API_KEY: 'PEGA_TU_API_KEY_AQUI',
-
-  // 2. Verdi Flow → Nuevo flujo → Nodo Webhook → copia la URL aquí
-  //    El flujo recibe el JSON y escribe la fila en Google Sheets
-  VERDI_FLOW_URL: 'https://verdi-flows.melisystems.com/webhook/punchlist-punch',
+  // URLs CSV publicadas desde Google Sheets (sin API Key)
+  CSV_PUNCHES:    'https://docs.google.com/spreadsheets/d/e/2PACX-1vQeRD6aZ8fLyq_t4nmjZLt1LFgGEB1MlRmvCnb9z4kUM7H40dlEOUNtTygosfqlZnb_vVq4fl9x4MHG/pub?gid=0&single=true&output=csv',
+  CSV_SITIOS:     'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=0&single=true&output=csv',
+  CSV_PROYECTOS:  'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=2137157448&single=true&output=csv',
+  CSV_FASES:      'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=1364251362&single=true&output=csv',
+  CSV_CATEGORIAS: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSRQbsBnxnWeu_MN8NGyHqe5wtMMp6IiCCCjO9vMOSKnZXJ_ExRRsb9y1Qt4xNNsktw7TmwbO-vZHVl/pub?gid=479947321&single=true&output=csv',
+  // Verdi Flow webhook (escritura)
+  VERDI_FLOW_URL:  'https://verdi-flows.melisystems.com/webhook/punchlist-punch',
+  FOTOS_FOLDER_ID: '1ULOAoHxfaroWHiBHpMZpmgvZ0l_3mdHb',
 };
 
-// ── GOOGLE SHEETS API (lectura) ───────────────────────────────────────
+// ── CSV READER (lectura sin API Key) ──────────────────────────────────
 const SheetsAPI = {
-  base: 'https://sheets.googleapis.com/v4/spreadsheets',
-  async read(sheetId, tab) {
-    if (CONFIG.GOOGLE_API_KEY === 'PEGA_TU_API_KEY_AQUI') return null; // modo demo
-    const url = `${this.base}/${sheetId}/values/${encodeURIComponent(tab)}?key=${CONFIG.GOOGLE_API_KEY}`;
+  async read(url) {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`Sheets API error ${res.status} en ${tab}`);
-    const data = await res.json();
-    const rows = data.values || [];
-    if (rows.length < 2) return [];
-    const headers = rows[0].map(h => h.trim());
-    return rows.slice(1).map(row => {
+    if (!res.ok) throw new Error('CSV fetch error ' + res.status);
+    const text = await res.text();
+    return this.parseCSV(text);
+  },
+  parseCSV(text) {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+    return lines.slice(1).map(line => {
+      const fields = [];
+      let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQ = !inQ; }
+        else if (ch === ',' && !inQ) { fields.push(cur); cur = ''; }
+        else { cur += ch; }
+      }
+      fields.push(cur);
       const obj = {};
-      headers.forEach((h, i) => { obj[h] = row[i] ?? ''; });
+      headers.forEach((h, i) => { obj[h] = (fields[i] || '').replace(/^"|"$/g, '').trim(); });
       return obj;
     });
   },
-  // Escritura via Verdi Flow webhook
   async write(action, payload) {
-    if (CONFIG.VERDI_FLOW_URL.includes('PEGA')) {
-      console.warn('Verdi Flow URL no configurada — guardando solo en memoria');
-      return { ok: true, demo: true };
-    }
     const res = await fetch(CONFIG.VERDI_FLOW_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -447,6 +447,24 @@ const PRIORITY_LABEL = { low: 'Baja', medium: 'Media', high: 'Alta' };
 
 const HEALTH_BY_STATUS = { active: 'green', commissioning: 'yellow', planning: 'red', closed: 'green' };
 
+
+// ── MAPPERS CSV → objeto interno ─────────────────────────────────────
+function mapSitio(r) {
+  return { id: r.id||'', code: r.code||'', name: r.nombre||r.name||'', city: r.ciudad||r.city||'', country: r.pais||r.country||'', flag: r.flag||r.pais_code||'MX', status: r.status||'active', pos: { x: parseFloat(r.pos_x||25), y: parseFloat(r.pos_y||22) }, open: 0, critical: 0, overdue: 0 };
+}
+function mapProyecto(r) {
+  return { id: r.id||'', siteId: r.siteId||'', code: r.code||'', name: r.nombre||r.name||'', system: r.sistema||r.system||'', status: r.status||'active', progress: parseInt(r.progreso||r.progress||0) };
+}
+function mapFase(r) {
+  return { id: r.id||'', projectId: r.projectId||'', code: r.code||'', name: r.nombre||r.name||'', order: parseInt(r.orden||r.order||1), status: r.status||'active', progress: parseInt(r.progreso||r.progress||0) };
+}
+function mapCategoria(r) {
+  return { id: r.id||'', name: r.nombre||r.name||'' };
+}
+function mapPunch(r) {
+  return { id: r.id||'', code: r.code||'', title: r.titulo||r.title||'', description: r.descripcion||r.description||'', suggestedSolution: r.solucion||r.suggestedSolution||'', siteId: r.siteId||'', projectId: r.projectId||'', phaseId: r.phaseId||'', status: r.status||'open', priority: r.prioridad||r.priority||'medium', categoryId: r.categoryId||'', qualPhase: r.qualPhase||r.faseCal||'IQ', assigneeId: r.assigneeId||null, assigneeName: r.assigneeName||'', assigneeOrg: r.assigneeOrg||'', mlRespName: r.respMeli||r.mlRespName||'', vendorName: r.respVendor||r.vendorName||'', inspectorName: r.inspectorName||'', dueDate: r.fechaVence||r.dueDate||null, createdAt: r.fechaCreacion||r.createdAt||new Date().toISOString(), updatedAt: r.fechaActualizacion||r.updatedAt||new Date().toISOString(), photoCount: parseInt(r.photoCount||0), commentCount: parseInt(r.commentCount||0), protoCode: r.protoCode||'', protoName: r.protoName||'' };
+}
+
 // ── ROUTER STATE ─────────────────────────────────────────────────────
 const state = {
   authed: false,
@@ -570,10 +588,7 @@ function renderLogin() {
           <button class="btn-primary" data-action="login">
             Entrar · Google Sheets + Verdi Flow
           </button>
-          ${(CONFIG.GOOGLE_API_KEY === 'PEGA_TU_API_KEY_AQUI' || CONFIG.VERDI_FLOW_URL.includes('PEGA')) ? `
-          <div style="margin-top:12px;padding:10px;background:rgba(243,156,18,0.1);border:1px solid var(--warn);border-radius:4px;font-size:11px;color:var(--warn);font-weight:600;">
-            ⚠️ Modo demo · configura API Key y Verdi Flow URL en CONFIG para datos reales.
-          </div>` : ''}
+
           <p style="text-align: center; margin: 14px 0 0; font-size: 11px; color: var(--g75);">
             Identidad corporativa Mercado Libre · SSO
           </p>
@@ -1156,9 +1171,45 @@ function bind(root) {
 
       switch (action) {
         case 'login':
+          // Mostrar loading
+          $('app').innerHTML = '<div class="loading-screen"><div class="spinner"></div><p>Cargando desde Drive…</p></div>';
+          try {
+            const [sitios, proyectos, fases, categorias, punches] = await Promise.all([
+              SheetsAPI.read(CONFIG.CSV_SITIOS),
+              SheetsAPI.read(CONFIG.CSV_PROYECTOS),
+              SheetsAPI.read(CONFIG.CSV_FASES),
+              SheetsAPI.read(CONFIG.CSV_CATEGORIAS),
+              SheetsAPI.read(CONFIG.CSV_PUNCHES),
+            ]);
+            if (sitios.length)     DATA.sites      = sitios.map(mapSitio);
+            if (proyectos.length)  DATA.projects   = proyectos.map(mapProyecto);
+            if (fases.length)      DATA.phases     = fases.map(mapFase);
+            if (categorias.length) DATA.categories = categorias.map(mapCategoria);
+            if (punches.length)    DATA.punches    = punches.map(mapPunch);
+            // Recalcular KPIs de sitios
+            DATA.sites.forEach(s => {
+              const sp = DATA.punches.filter(p => p.siteId === s.id);
+              s.open     = sp.filter(p => !['closed','rejected'].includes(p.status)).length;
+              s.critical = sp.filter(p => p.priority === 'high' && !['closed','rejected'].includes(p.status)).length;
+              s.overdue  = sp.filter(p => { const d = daysOverdue(p.dueDate); return d !== null && d < 0 && !['closed','rejected'].includes(p.status); }).length;
+            });
+            // Scope inicial
+            if (DATA.sites.length && !state.scope.siteId) {
+              const s = DATA.sites[0];
+              state.scope.siteId = s.id;
+              const proj = DATA.projects.find(p => p.siteId === s.id);
+              if (proj) { state.scope.projectId = proj.id; const fase = DATA.phases.find(f => f.projectId === proj.id); if (fase) state.scope.phaseId = fase.id; }
+            }
+            try { localStorage.setItem('pl_cache', JSON.stringify(DATA)); } catch(e) {}
+            toast('✓ Datos cargados desde Drive');
+          } catch(err) {
+            console.warn('CSV load failed:', err);
+            const cached = localStorage.getItem('pl_cache');
+            if (cached) { try { Object.assign(DATA, JSON.parse(cached)); toast('Sin conexión · mostrando caché'); } catch(e) {} }
+            else { toast('Sin conexión · modo demo'); }
+          }
           state.authed = true;
           state.route = 'map';
-          toast('Bienvenida, ' + DATA.user.name.split(' ')[0]);
           render();
           break;
         case 'logout':
