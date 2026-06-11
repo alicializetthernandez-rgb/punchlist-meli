@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Punch List — MercadoLibre</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1976D2" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #F5F7FA; }
+    #app { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* Loading screen */
+    #loading {
+      position: fixed; inset: 0; background: #1976D2;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 9999; color: #fff;
+    }
+    #loading .logo { font-size: 48px; margin-bottom: 16px; }
+    #loading h1 { font-size: 24px; font-weight: 800; margin-bottom: 8px; }
+    #loading p { font-size: 14px; opacity: 0.8; margin-bottom: 32px; }
+    #loading .spinner {
+      width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: #323232; color: #fff; padding: 10px 20px; border-radius: 24px;
+      font-size: 13px; z-index: 1000; display: none; white-space: nowrap;
+    }
+    #toast.show { display: block; animation: fadeInOut 3s forwards; }
+    @keyframes fadeInOut { 0%{opacity:0} 10%{opacity:1} 80%{opacity:1} 100%{opacity:0} }
+
+    /* Offline banner */
+    #offline-banner {
+      background: #FB8C00; color: #fff; text-align: center;
+      padding: 6px; font-size: 13px; font-weight: 600; display: none;
+    }
+    #offline-banner.show { display: block; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="logo">🔧</div>
+  <h1>Punch List</h1>
+  <p>MercadoLibre</p>
+  <div class="spinner"></div>
+</div>
+
+<div id="offline-banner">⚠️ Sin conexión — trabajando en modo offline</div>
+<div id="toast"></div>
+<div id="app"></div>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- Recharts -->
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- XLSX -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = Recharts;
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const BASE_URL = "http://verdi-flows.melisystems.com/webhook";
+const ENDPOINTS = {
+  getSites:       `${BASE_URL}/get-sites`,
+  getProjects:    `${BASE_URL}/get-projects`,
+  getPunches:     `${BASE_URL}/get-punches`,
+  getInspectors:  `${BASE_URL}/get-inspectors`,
+  postPunch:      `${BASE_URL}/punch-item`,
+  postProject:    `${BASE_URL}/punch-item`,
+};
+
+// ─── OFFLINE QUEUE ────────────────────────────────────────────────────────────
+const QUEUE_KEY = "punchlist_offline_queue";
+const getQueue = () => JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
+const addToQueue = (item) => {
+  const q = getQueue();
+  q.push({ ...item, _queuedAt: new Date().toISOString() });
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+};
+const clearQueue = () => localStorage.setItem(QUEUE_KEY, "[]");
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+const api = {
+  get: async (url) => {
+    const res = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+  post: async (url, body) => {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+};
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+const showToast = (msg) => {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show";
+  setTimeout(() => t.className = "", 3100);
+};
+
+// ─── COLORS ───────────────────────────────────────────────────────────────────
+const C = {
+  primary:"#1976D2", primaryLight:"#E3F2FD", danger:"#E53935", success:"#43A047",
+  warning:"#FB8C00", bg:"#F5F7FA", card:"#FFFFFF", border:"#E0E0E0", text:"#212121", textSec:"#757575",
+};
+const STATUS_C = { Pendiente:"#FB8C00", "En curso":"#1976D2", Finalizado:"#43A047" };
+const STATUS_BG = { Pendiente:"#FFF3E0", "En curso":"#E3F2FD", Finalizado:"#E8F5E9" };
+const PRI_C = { Alta:"#E53935", Media:"#FB8C00", Baja:"#43A047" };
+const PHASE_C = { IQ:"#7B1FA2", OQ:"#0288D1", PQ:"#00897B" };
+const CATS = ["Mecánico","Eléctrico","Seguridad","Documentación","Civil","Software","Otro"];
+
+// ─── BASE COMPONENTS ──────────────────────────────────────────────────────────
+const Badge = ({label,color,bg}) => (
+  <span style={{background:bg||"#eee",color:color||"#333",borderRadius:20,padding:"2px 10px",fontSize:12,fontWeight:600,display:"inline-block"}}>{label}</span>
+);
+
+const TopBar = ({title,onBack,actions}) => (
+  <div style={{background:"#fff",borderBottom:`1px solid ${C.border}`,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:100}}>
+    {onBack ? <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,padding:0}}>←</button> : <div style={{width:32}}/>}
+    <span style={{flex:1,fontWeight:700,fontSize:17}}>{title}</span>
+    <div style={{display:"flex",gap:8,alignItems:"center"}}>{actions}</div>
+  </div>
+);
+
+const Card = ({children,onClick,style={}}) => (
+  <div onClick={onClick} style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:14,marginBottom:10,boxShadow:"0 1px 4px rgba(0,0,0,.06)",cursor:onClick?"pointer":"default",...style}}>{children}</div>
+);
+
+const Field = ({label,children,required}) => (
+  <div style={{marginBottom:14}}>
+    <label style={{fontSize:13,color:C.textSec,fontWeight:600,display:"block",marginBottom:4}}>{label}{required&&<span style={{color:C.danger}}> *</span>}</label>
+    {children}
+  </div>
+);
+
+const Input = ({value,onChange,placeholder,disabled,type="text"}) => (
+  <input type={type} value={value||""} onChange={e=>onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+    style={{width:"100%",border:`1px solid ${disabled?"#eee":C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:disabled?"#F5F5F5":"#fff",boxSizing:"border-box",outline:"none"}}/>
+);
+
+const Sel = ({value,onChange,options,disabled}) => (
+  <select value={value||""} onChange={e=>onChange(e.target.value)} disabled={disabled}
+    style={{width:"100%",border:`1px solid ${disabled?"#eee":C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:disabled?"#F5F5F5":"#fff",boxSizing:"border-box",outline:"none"}}>
+    <option value="">Seleccionar…</option>
+    {options.map(o=><option key={o} value={o}>{o}</option>)}
+  </select>
+);
+
+const ToggleGroup = ({value,onChange,options,colors}) => (
+  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+    {options.map(o=>{
+      const active=value===o; const c=colors?.[o]||C.primary;
+      return <button key={o} onClick={()=>onChange(o)} style={{flex:1,minWidth:70,padding:"9px 4px",borderRadius:8,border:`2px solid ${active?c:C.border}`,background:active?c:"#fff",color:active?"#fff":C.textSec,fontWeight:700,fontSize:14,cursor:"pointer"}}>{o}</button>;
+    })}
+  </div>
+);
+
+const SectionHeader = ({title,count}) => (
+  <div style={{background:C.bg,borderRadius:8,padding:"8px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:8}}>
+    <span style={{fontWeight:700,fontSize:14}}>{title}</span>
+    {count!==undefined&&<span style={{background:C.border,borderRadius:20,padding:"1px 8px",fontSize:12,fontWeight:700,color:C.textSec}}>{count}</span>}
+  </div>
+);
+
+const IconBtn = ({icon,onClick,color}) => (
+  <button onClick={e=>{e.stopPropagation();onClick();}} style={{background:"none",border:"none",cursor:"pointer",fontSize:16,color:color||C.textSec,padding:"4px 8px"}}>{icon}</button>
+);
+
+const Btn = ({onClick,children,variant="primary",small,full,style={}}) => {
+  const base = {borderRadius:8,border:"none",cursor:"pointer",fontWeight:600,display:"inline-flex",alignItems:"center",gap:4,justifyContent:"center"};
+  const variants = {
+    primary:{background:C.primary,color:"#fff",padding:small?"6px 14px":"10px 20px",fontSize:small?13:15},
+    ghost:{background:"transparent",color:C.primary,padding:small?"6px 14px":"10px 20px",fontSize:small?13:15,border:`1px solid ${C.primary}`},
+    text:{background:"transparent",color:C.primary,padding:small?"4px 8px":"6px 12px",fontSize:small?13:14},
+  };
+  return <button onClick={onClick} style={{...base,...variants[variant],...(full?{width:"100%"}:{}),...style}}>{children}</button>;
+};
+
+// ─── PHOTO FIELD ──────────────────────────────────────────────────────────────
+const PhotoField = ({label,value,onChange}) => {
+  const fileRef = useRef(null);
+  const handleFile = e => {
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => onChange(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+  return (
+    <Field label={label}>
+      {value ? (
+        <div style={{position:"relative",borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`}}>
+          <img src={value} style={{width:"100%",display:"block",maxHeight:200,objectFit:"cover"}} alt="foto"/>
+          <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,.5)",display:"flex"}}>
+            <button onClick={()=>fileRef.current.click()} style={{flex:1,background:"none",border:"none",color:"#fff",padding:"10px 0",fontSize:13,fontWeight:700,cursor:"pointer",borderRight:"1px solid rgba(255,255,255,.2)"}}>📷 Cambiar</button>
+            <button onClick={()=>onChange(null)} style={{flex:1,background:"none",border:"none",color:"#ff6b6b",padding:"10px 0",fontSize:13,fontWeight:700,cursor:"pointer"}}>🗑️</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={()=>fileRef.current.click()}
+          style={{width:"100%",border:`1.5px dashed ${C.border}`,borderRadius:8,padding:"28px 0",background:"#FAFAFA",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+          <span style={{fontSize:32}}>📷</span>
+          <span style={{fontSize:13,color:C.primary,fontWeight:600}}>Tomar foto o elegir de galería</span>
+        </button>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{display:"none"}}/>
+    </Field>
+  );
+};
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+const ExportModal = ({punches,projectId,siteId,siteName,onClose}) => {
+  const [loading,setLoading] = useState(null);
+  const [done,setDone] = useState(null);
+
+  const exportExcel = async () => {
+    const headers = ["ID","Timestamp","Site ID","Proyecto","Fase","Categoría","Descripción","Solución","Estatus","Prioridad","Resp. Meli","Resp. Proveedor","F. Cierre Est.","F. Cierre Real","Comentarios","Inspector"];
+    const rows = punches.map(p=>[p.id,p.ts,p.siteId,p.project,p.phase,p.cat,p.desc,p.sol,p.status,p.priority,p.respMeli,p.respProv,p.fechaEst,p.fechaReal,p.comments,p.inspector]);
+    const ws = XLSX.utils.aoa_to_sheet([headers,...rows]);
+    ws["!cols"] = [20,18,10,32,6,14,40,40,12,10,20,24,14,14,32,20].map(w=>({wch:w}));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Punch List");
+    XLSX.writeFile(wb,`PunchList_${siteId}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  };
+
+  const exportPDF = async () => {
+    const {jsPDF} = window.jspdf;
+    const doc = new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+    doc.setFillColor(25,118,210); doc.rect(0,0,297,20,"F");
+    doc.setTextColor(255,255,255); doc.setFontSize(14); doc.setFont("helvetica","bold");
+    doc.text("PUNCH LIST — MERCADOLIBRE",14,8);
+    doc.setFontSize(9); doc.setFont("helvetica","normal");
+    doc.text(`Sitio: ${siteId} · ${siteName}`,14,14);
+    doc.text(`Proyecto: ${projectId}`,14,19);
+    doc.text(`Generado: ${new Date().toLocaleDateString("es-MX")}`,240,14);
+    const byS = s=>punches.filter(p=>p.status===s).length;
+    [["Pendiente",byS("Pendiente"),"#FB8C00"],["En curso",byS("En curso"),"#1976D2"],["Finalizado",byS("Finalizado"),"#43A047"],["Total",punches.length,"#424242"]].forEach((b,i)=>{
+      const x=14+i*68; const rgb=b[2].match(/\w\w/g).map(h=>parseInt(h,16));
+      doc.setFillColor(...rgb); doc.roundedRect(x,24,62,14,2,2,"F");
+      doc.setTextColor(255,255,255); doc.setFontSize(16); doc.setFont("helvetica","bold");
+      doc.text(String(b[1]),x+10,33); doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.text(b[0],x+26,33);
+    });
+    doc.autoTable({
+      startY:42,
+      head:[["#","ID","Fase","Cat.","Descripción","Solución","Estatus","Prioridad","Resp. Proveedor","F. Cierre"]],
+      body:punches.map((p,i)=>[i+1,p.id.slice(-12),p.phase,p.cat,p.desc,p.sol||"—",p.status,p.priority,p.respProv||"—",p.fechaEst||"—"]),
+      styles:{fontSize:8,cellPadding:2},
+      headStyles:{fillColor:[25,118,210],textColor:255,fontStyle:"bold"},
+      alternateRowStyles:{fillColor:[245,247,250]},
+    });
+    doc.save(`PunchList_${siteId}_${new Date().toLocaleDateString("es-MX").replace(/\//g,"-")}.pdf`);
+  };
+
+  const exportSheets = () => {
+    const headers = ["ID","Timestamp","Site ID","Proyecto","Fase","Categoría","Descripción","Solución","Estatus","Prioridad","Resp. Meli","Resp. Proveedor","F. Cierre Est.","F. Cierre Real","Comentarios","Inspector"];
+    const rows = punches.map(p=>[p.id,p.ts,p.siteId,p.project,p.phase,p.cat,p.desc,p.sol,p.status,p.priority,p.respMeli,p.respProv,p.fechaEst,p.fechaReal,p.comments,p.inspector]);
+    const csv = [headers,...rows].map(r=>r.map(c=>`"${(c||"").replace(/"/g,'""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href=url; a.download=`PunchList_${siteId}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    setTimeout(()=>window.open("https://sheets.google.com","_blank"),600);
+  };
+
+  const handle = async type => {
+    setLoading(type);
+    try {
+      if(type==="pdf") await exportPDF();
+      else if(type==="excel") await exportExcel();
+      else exportSheets();
+      setDone(type);
+    } catch(e) { showToast("Error al exportar"); }
+    setLoading(null);
+  };
+
+  const byS = s=>punches.filter(p=>p.status===s).length;
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:600,padding:20,paddingBottom:32}} onClick={e=>e.stopPropagation()}>
+        <div style={{width:36,height:4,background:C.border,borderRadius:2,margin:"0 auto 16px"}}/>
+        <div style={{fontWeight:700,fontSize:17,marginBottom:4}}>Exportar Punch List</div>
+        <div style={{fontSize:13,color:C.textSec,marginBottom:14}}>{siteId} · {projectId}</div>
+        <div style={{display:"flex",gap:8,marginBottom:18}}>
+          {[["Pendiente",byS("Pendiente"),STATUS_BG["Pendiente"],STATUS_C["Pendiente"]],["En curso",byS("En curso"),STATUS_BG["En curso"],STATUS_C["En curso"]],["Finalizado",byS("Finalizado"),STATUS_BG["Finalizado"],STATUS_C["Finalizado"]],["Total",punches.length,"#F5F5F5",C.text]].map(([l,n,bg,color])=>(
+            <div key={l} style={{flex:1,background:bg,borderRadius:10,padding:"8px 4px",textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:800,color}}>{n}</div>
+              <div style={{fontSize:10,color,fontWeight:600}}>{l}</div>
+            </div>
+          ))}
+        </div>
+        {[{id:"pdf",icon:"📄",label:"Exportar PDF",sub:"Reporte para el proveedor",color:"#E53935",bg:"#FFEBEE"},{id:"excel",icon:"📊",label:"Exportar Excel",sub:"Tabla completa",color:"#2E7D32",bg:"#E8F5E9"},{id:"sheets",icon:"🟢",label:"Google Sheets (CSV)",sub:"Descarga e importa",color:"#1565C0",bg:"#E3F2FD"}].map(opt=>(
+          <button key={opt.id} onClick={()=>handle(opt.id)} disabled={!!loading}
+            style={{width:"100%",display:"flex",alignItems:"center",gap:14,background:done===opt.id?"#F1F8E9":opt.bg,border:`1.5px solid ${opt.color}44`,borderRadius:12,padding:"13px 16px",marginBottom:10,cursor:"pointer"}}>
+            <span style={{fontSize:26}}>{done===opt.id?"✅":opt.icon}</span>
+            <div style={{flex:1,textAlign:"left"}}>
+              <div style={{fontWeight:700,fontSize:14,color:opt.color}}>{loading===opt.id?"Generando…":done===opt.id?"¡Listo!":opt.label}</div>
+              <div style={{fontSize:12,color:C.textSec}}>{opt.sub}</div>
+            </div>
+          </button>
+        ))}
+        <button onClick={onClose} style={{width:"100%",marginTop:4,padding:"12px",background:"none",border:`1px solid ${C.border}`,borderRadius:12,fontSize:15,fontWeight:600,color:C.textSec,cursor:"pointer"}}>Cerrar</button>
+      </div>
+    </div>
+  );
+};
+
+const ExportBtn = ({punches,projectId,siteId,siteName}) => {
+  const [open,setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={()=>setOpen(true)} style={{background:C.primary,color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>⬆️ Exportar</button>
+      {open&&<ExportModal punches={punches} projectId={projectId} siteId={siteId} siteName={siteName} onClose={()=>setOpen(false)}/>}
+    </>
+  );
+};
+
+// ─── LEAFLET MAP ──────────────────────────────────────────────────────────────
+const LeafletMap = ({sites,onSiteClick}) => {
+  const id = useRef("map-"+Math.random().toString(36).slice(2,7)).current;
+  const mapRef = useRef(null);
+
+  useEffect(()=>{
+    if(mapRef.current) { mapRef.current.remove(); mapRef.current=null; }
+    const el = document.getElementById(id);
+    if(!el||!window.L) return;
+    const map = window.L.map(el,{zoomControl:true,scrollWheelZoom:false}).setView([-5,-65],3);
+    mapRef.current = map;
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap",maxZoom:18}).addTo(map);
+    const icon = window.L.divIcon({html:`<div style="background:#1976D2;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)"></div>`,className:"",iconSize:[14,14],iconAnchor:[7,7]});
+    sites.forEach(s=>{if(s.lat&&s.lng) window.L.marker([parseFloat(s.lat),parseFloat(s.lng)],{icon}).addTo(map).bindPopup(`<b>${s.id}</b><br>${s.desc||s["Descripción"]||""}`).on("click",()=>onSiteClick(s));});
+    return ()=>{ if(mapRef.current){mapRef.current.remove();mapRef.current=null;} };
+  },[sites]);
+
+  return <div id={id} style={{height:240,width:"100%",zIndex:1}}/>;
+};
+
+// ─── FORMS ────────────────────────────────────────────────────────────────────
+const SiteForm = ({initial,onSave,onCancel,loading}) => {
+  const [f,setF] = useState(initial||{id:"",desc:"",loc:"",lat:"",lng:""});
+  const set = k=>v=>setF(p=>({...p,[k]:v}));
+  return (
+    <div style={{padding:16}}>
+      <Field label="Site ID" required><Input value={f.id} onChange={set("id")} disabled={!!initial}/></Field>
+      <Field label="Descripción"><Input value={f.desc} onChange={set("desc")}/></Field>
+      <Field label="Locación" required>
+        <div style={{position:"relative"}}>
+          <Input value={f.loc} onChange={set("loc")} placeholder="Dirección o Google Maps link"/>
+          <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)"}}>📍</span>
+        </div>
+      </Field>
+      <div style={{display:"flex",gap:12,marginTop:8}}>
+        <Btn variant="ghost" onClick={onCancel} full>Cancelar</Btn>
+        <Btn onClick={()=>{if(f.id&&f.loc)onSave(f);}} full disabled={loading}>{loading?"Guardando…":"Guardar"}</Btn>
+      </div>
+    </div>
+  );
+};
+
+const ProjectForm = ({siteId,initial,onSave,onCancel,loading}) => {
+  const [f,setF] = useState(initial||{id:"",siteId});
+  const set = k=>v=>setF(p=>({...p,[k]:v}));
+  return (
+    <div style={{padding:16}}>
+      <Field label="Sitio"><div style={{border:"1px solid #eee",borderRadius:8,padding:"10px 12px",background:"#F5F5F5",fontSize:14,color:C.textSec}}>🏢 {siteId}</div></Field>
+      <Field label="Proyecto ID" required><Input value={f.id} onChange={set("id")} disabled={!!initial}/></Field>
+      <PhotoField label="Imagen del Sitio" value={f.siteImg} onChange={set("siteImg")}/>
+      <div style={{display:"flex",gap:12,marginTop:8}}>
+        <Btn variant="ghost" onClick={onCancel} full>Cancelar</Btn>
+        <Btn onClick={()=>{if(f.id)onSave({...f,siteId});}} full disabled={loading}>{loading?"Guardando…":"Guardar"}</Btn>
+      </div>
+    </div>
+  );
+};
+
+const PunchForm = ({siteId,projectId,initial,onSave,onCancel,sites,projects,users,onAddInspector,loading}) => {
+  const newId = siteId?`${siteId}-${new Date().toISOString().slice(0,10).replace(/-/g,"")}-${String(Math.floor(Math.random()*900)+100)}`:"";
+  const [f,setF] = useState(initial||{id:newId,ts:new Date().toLocaleString("es-MX"),siteId:siteId||"",project:projectId||"",phase:"",cat:"",img:null,desc:"",sol:"",status:"Pendiente",priority:"Media",respMeli:"",respProv:"",fechaEst:"",fechaReal:"",imgSol:null,comments:"",inspector:""});
+  const set = k=>v=>setF(p=>({...p,[k]:v}));
+  const locked = !!(siteId&&projectId);
+  const userNames = users.map(u=>`${u.nombre||u.Nombre||""} ${u.apellido||u.Apellido||""}`.trim());
+  const siteIds = sites.map(s=>s.id||s.ID);
+  const projIds = projects.filter(p=>!f.siteId||(p.siteId||p["Site ID"])===f.siteId).map(p=>p.id||p.ID);
+
+  return (
+    <div style={{padding:16}}>
+      <Field label="ID"><Input value={f.id} onChange={()=>{}} disabled/></Field>
+      <Field label="Timestamp"><Input value={f.ts} onChange={()=>{}} disabled/></Field>
+      <Field label="Site ID" required>
+        {(locked||siteId)?<div style={{border:"1px solid #eee",borderRadius:8,padding:"10px 12px",background:"#F5F5F5",fontSize:14,color:C.textSec,display:"flex",alignItems:"center",gap:8}}>🏢 {f.siteId} <span style={{marginLeft:"auto",fontSize:11,color:"#BDBDBD"}}>🔒</span></div>
+          :<Sel value={f.siteId} onChange={set("siteId")} options={siteIds}/>}
+      </Field>
+      <Field label="Proyecto" required>
+        {(locked||projectId)?<div style={{border:"1px solid #eee",borderRadius:8,padding:"10px 12px",background:"#F5F5F5",fontSize:14,color:C.textSec,display:"flex",alignItems:"center",gap:8}}>{f.project} <span style={{marginLeft:"auto",fontSize:11,color:"#BDBDBD"}}>🔒</span></div>
+          :<Sel value={f.project} onChange={set("project")} options={projIds}/>}
+      </Field>
+      <Field label="Fase IQ, OQ ó PQ" required><ToggleGroup value={f.phase} onChange={set("phase")} options={["IQ","OQ","PQ"]} colors={PHASE_C}/></Field>
+      <Field label="Categoría" required><Sel value={f.cat} onChange={set("cat")} options={CATS}/></Field>
+      <PhotoField label="Imagen del Detalle a Corregir" value={f.img} onChange={set("img")}/>
+      <Field label="Descripción" required><textarea value={f.desc} onChange={e=>set("desc")(e.target.value)} rows={3} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,boxSizing:"border-box",resize:"vertical",outline:"none"}}/></Field>
+      <Field label="Solución Sugerida"><textarea value={f.sol} onChange={e=>set("sol")(e.target.value)} rows={2} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,boxSizing:"border-box",resize:"vertical",outline:"none"}}/></Field>
+      <Field label="Estatus" required><ToggleGroup value={f.status} onChange={set("status")} options={["Pendiente","En curso","Finalizado"]} colors={STATUS_C}/></Field>
+      <Field label="Prioridad" required><ToggleGroup value={f.priority} onChange={set("priority")} options={["Baja","Media","Alta"]} colors={PRI_C}/></Field>
+      <Field label="Responsable Mercado Libre"><Sel value={f.respMeli} onChange={set("respMeli")} options={userNames}/></Field>
+      <Field label="Responsable Proveedor"><Input value={f.respProv} onChange={set("respProv")}/></Field>
+      <Field label="Fecha de cierre estimada"><Input type="date" value={f.fechaEst} onChange={set("fechaEst")}/></Field>
+      <Field label="Fecha de cierre real"><Input type="date" value={f.fechaReal} onChange={set("fechaReal")}/></Field>
+      <PhotoField label="Imagen de la solución" value={f.imgSol} onChange={set("imgSol")}/>
+      <Field label="Comentarios generales"><textarea value={f.comments} onChange={e=>set("comments")(e.target.value)} rows={2} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,boxSizing:"border-box",resize:"vertical",outline:"none"}}/></Field>
+      <Field label="Inspeccionado por">
+        <div style={{display:"flex",gap:8}}>
+          <div style={{flex:1}}><Sel value={f.inspector} onChange={set("inspector")} options={userNames}/></div>
+          <button onClick={onAddInspector} style={{flexShrink:0,background:C.primaryLight,border:`1px solid ${C.primary}`,borderRadius:8,padding:"0 12px",color:C.primary,fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Nuevo</button>
+        </div>
+      </Field>
+      <div style={{display:"flex",gap:12,marginTop:8}}>
+        <Btn variant="ghost" onClick={onCancel} full>Cancelar</Btn>
+        <Btn onClick={()=>{if(f.siteId&&f.project&&f.phase&&f.cat&&f.desc)onSave(f);}} full disabled={loading}>{loading?"Guardando…":"Guardar"}</Btn>
+      </div>
+    </div>
+  );
+};
+
+const InspectorForm = ({initial,onSave,onCancel,loading}) => {
+  const [f,setF] = useState(initial||{nombre:"",apellido:"",email:"",tel:"",shift:"Día"});
+  const set = k=>v=>setF(p=>({...p,[k]:v}));
+  return (
+    <div style={{padding:16}}>
+      <Field label="Primer Nombre" required><Input value={f.nombre} onChange={set("nombre")}/></Field>
+      <Field label="Apellido" required><Input value={f.apellido} onChange={set("apellido")}/></Field>
+      <Field label="Email" required><Input value={f.email} onChange={set("email")} type="email"/></Field>
+      <Field label="Teléfono"><Input value={f.tel} onChange={set("tel")} type="tel"/></Field>
+      <Field label="Shift"><ToggleGroup value={f.shift} onChange={set("shift")} options={["Día","Noche"]}/></Field>
+      <div style={{display:"flex",gap:12,marginTop:8}}>
+        <Btn variant="ghost" onClick={onCancel} full>Cancelar</Btn>
+        <Btn onClick={()=>{if(f.nombre&&f.apellido&&f.email)onSave({...f,id:"u"+Date.now()});}} full disabled={loading}>{loading?"Guardando…":"Guardar"}</Btn>
+      </div>
+    </div>
+  );
+};
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function App() {
+  const [sites, setSites] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [punches, setPunches] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [savingPunch, setSavingPunch] = useState(false);
+
+  const [tab, setTab] = useState("sites");
+  const [screen, setScreen] = useState("main");
+  const [selSite, setSelSite] = useState(null);
+  const [selProject, setSelProject] = useState(null);
+  const [selPunch, setSelPunch] = useState(null);
+  const [selUser, setSelUser] = useState(null);
+  const [punchCtx, setPunchCtx] = useState({siteId:null,projectId:null});
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState(null);
+  const [prevScreen, setPrevScreen] = useState("main");
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [online, setOnline] = useState(navigator.onLine);
+
+  // Responsive
+  useEffect(()=>{
+    const h=()=>setWindowWidth(window.innerWidth);
+    window.addEventListener("resize",h);
+    return()=>window.removeEventListener("resize",h);
+  },[]);
+
+  // Online/offline
+  useEffect(()=>{
+    const on=()=>{setOnline(true);document.getElementById("offline-banner").classList.remove("show");syncQueue();};
+    const off=()=>{setOnline(false);document.getElementById("offline-banner").classList.add("show");};
+    window.addEventListener("online",on);
+    window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
+
+  // Load data on mount
+  useEffect(()=>{
+    loadAllData();
+  },[]);
+
+  const loadAllData = async () => {
+    try {
+      const [s,p,pu,ins] = await Promise.all([
+        api.get(ENDPOINTS.getSites).catch(()=>null),
+        api.get(ENDPOINTS.getProjects).catch(()=>null),
+        api.get(ENDPOINTS.getPunches).catch(()=>null),
+        api.get(ENDPOINTS.getInspectors).catch(()=>null),
+      ]);
+      if(s?.data) setSites(Array.isArray(s.data)?s.data:[s.data]);
+      if(p?.data) setProjects(Array.isArray(p.data)?p.data:[p.data]);
+      if(pu?.data) setPunches(Array.isArray(pu.data)?pu.data:[pu.data]);
+      if(ins?.data) setUsers(Array.isArray(ins.data)?ins.data:[ins.data]);
+    } catch(e) {
+      showToast("Error cargando datos — modo offline");
+    }
+    document.getElementById("loading").style.display = "none";
+    setDataLoaded(true);
+  };
+
+  // Sync offline queue when back online
+  const syncQueue = async () => {
+    const q = getQueue();
+    if(!q.length) return;
+    showToast(`Sincronizando ${q.length} elemento(s) pendiente(s)…`);
+    let synced = 0;
+    for(const item of q){
+      try { await api.post(ENDPOINTS.postPunch, item); synced++; } catch(e){}
+    }
+    if(synced===q.length){ clearQueue(); showToast(`✅ ${synced} elemento(s) sincronizado(s)`); }
+    else showToast(`⚠️ ${synced}/${q.length} sincronizado(s)`);
+  };
+
+  // Save punch
+  const savePunch = async (f) => {
+    setSavingPunch(true);
+    const payload = { operation: f.id && punches.find(p=>p.id===f.id) ? "UPDATE" : "CREATE", ...f };
+    try {
+      if(navigator.onLine){
+        await api.post(ENDPOINTS.postPunch, payload);
+        showToast("✅ Punch guardado");
+      } else {
+        addToQueue(payload);
+        showToast("📥 Guardado offline — se sincronizará al conectarse");
+      }
+      // Update local state
+      if(payload.operation==="UPDATE") setPunches(prev=>prev.map(p=>p.id===f.id?f:p));
+      else setPunches(prev=>[...prev,f]);
+    } catch(e){
+      addToQueue(payload);
+      showToast("📥 Error de red — guardado offline");
+    }
+    setSavingPunch(false);
+    return true;
+  };
+
+  const isDesktop = windowWidth >= 768;
+  const goMain = ()=>{setScreen("main");setSelSite(null);setSelProject(null);setSelPunch(null);setSelUser(null);};
+
+  // Normalize site/project fields from Sheet
+  const normSite = s=>({
+    id: s.id||s.ID||s["ID"]||"",
+    desc: s.desc||s["Descripción"]||s.Descripcion||"",
+    loc: s.loc||s["Locación"]||s.Locacion||"",
+    lat: parseFloat(s.lat||s.Latitud||0),
+    lng: parseFloat(s.lng||s.Longitud||0),
+  });
+  const normProject = p=>({
+    id: p.id||p.ID||"",
+    siteId: p.siteId||p["Site ID"]||"",
+  });
+  const normPunch = p=>({
+    id: p.id||p.ID||"",
+    ts: p.ts||p.Timestamp||"",
+    siteId: p.siteId||p["Site ID"]||"",
+    project: p.project||p.Proyecto||"",
+    phase: p.phase||p.Fase||"",
+    cat: p.cat||p["Categoría"]||p.Categoria||"",
+    desc: p.desc||p["Descripción"]||p.Descripcion||"",
+    sol: p.sol||p["Solución Sugerida"]||"",
+    status: p.status||p.Estatus||"Pendiente",
+    priority: p.priority||p.Prioridad||"Media",
+    respMeli: p.respMeli||p["Resp. Meli"]||"",
+    respProv: p.respProv||p["Resp. Proveedor"]||"",
+    fechaEst: p.fechaEst||p["Fecha Cierre Est."]||"",
+    fechaReal: p.fechaReal||p["Fecha Cierre Real"]||"",
+    comments: p.comments||p.Comentarios||"",
+    inspector: p.inspector||p["Inspeccionado por"]||"",
+    img: p.img||null, imgSol: p.imgSol||null,
+  });
+  const normUser = u=>({
+    id: u.id||u.ID||"u"+Math.random(),
+    nombre: u.nombre||u.Nombre||"",
+    apellido: u.apellido||u.Apellido||"",
+    email: u.email||u.Email||"",
+    tel: u.tel||u["Teléfono"]||"",
+    shift: u.shift||u.Shift||"Día",
+  });
+
+  const normSites = sites.map(normSite).filter(s=>s.id);
+  const normProjects = projects.map(normProject).filter(p=>p.id);
+  const normPunches = punches.map(normPunch).filter(p=>p.id);
+  const normUsers = users.map(normUser);
+
+  // ── SIDEBAR ──
+  const DesktopSidebar = () => (
+    <div style={{width:220,flexShrink:0,background:"#fff",borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",height:"100vh",position:"sticky",top:0}}>
+      <div style={{padding:"20px 16px 14px",borderBottom:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:38,height:38,borderRadius:10,background:"linear-gradient(135deg,#FFE600,#F5A623)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🔧</div>
+          <div><div style={{fontWeight:800,fontSize:14}}>Punch List</div><div style={{fontSize:11,color:C.textSec}}>MercadoLibre</div></div>
+        </div>
+      </div>
+      <div style={{flex:1,padding:"8px 0"}}>
+        {[{id:"sites",icon:"🗺️",label:"Sitios"},{id:"projects",icon:"📋",label:"Proyectos"},{id:"punches",icon:"⚙️",label:"Punch List"},{id:"charts",icon:"📊",label:"Gráficas"},{id:"inspectors",icon:"👥",label:"Inspectores"}].map(item=>{
+          const active = screen==="main"?tab===item.id:(screen==="inspectors"&&item.id==="inspectors");
+          return (
+            <button key={item.id} onClick={()=>{if(item.id==="inspectors"){setDrawerTab("inspectors");setScreen("inspectors");}else{setTab(item.id);setScreen("main");setDrawerTab(null);}}}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"11px 16px",background:active?C.primaryLight:"none",border:"none",cursor:"pointer",borderLeft:active?`3px solid ${C.primary}`:"3px solid transparent"}}>
+              <span style={{fontSize:18}}>{item.icon}</span>
+              <span style={{fontSize:14,fontWeight:active?700:400,color:active?C.primary:C.text}}>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{padding:12,borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:8}}>
+        <div style={{width:32,height:32,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:14}}>A</div>
+        <span style={{fontSize:12,color:C.textSec,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>alicializett.hernandez@mercadolibre.com.mx</span>
+      </div>
+    </div>
+  );
+
+  const SideDrawer = () => (
+    <>
+      {drawerOpen&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.4)",zIndex:300}} onClick={()=>setDrawerOpen(false)}/>}
+      <div style={{position:"fixed",top:0,left:0,bottom:0,width:280,background:"#fff",zIndex:400,transform:drawerOpen?"translateX(0)":"translateX(-100%)",transition:"transform .25s ease",display:"flex",flexDirection:"column",boxShadow:"4px 0 24px rgba(0,0,0,.15)"}}>
+        <div style={{padding:"24px 20px 16px",borderBottom:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#FFE600,#F5A623)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>🔧</div>
+            <div><div style={{fontWeight:800,fontSize:15}}>Punch List</div><div style={{fontSize:12,color:C.textSec}}>MercadoLibre</div></div>
+          </div>
+        </div>
+        <div style={{flex:1,padding:"12px 0"}}>
+          {[{id:"inspectors",icon:"👥",label:"Inspectores"},{id:"about",icon:"ℹ️",label:"About"},{id:"feedback",icon:"💬",label:"Feedback"}].map(item=>(
+            <button key={item.id} onClick={()=>{setDrawerTab(item.id);setDrawerOpen(false);if(item.id==="inspectors")setScreen("inspectors");}}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:14,padding:"13px 20px",background:drawerTab===item.id?C.primaryLight:"none",border:"none",cursor:"pointer",borderLeft:drawerTab===item.id?`4px solid ${C.primary}`:"4px solid transparent"}}>
+              <span style={{fontSize:20}}>{item.icon}</span>
+              <span style={{fontSize:15,fontWeight:drawerTab===item.id?700:400,color:drawerTab===item.id?C.primary:C.text}}>{item.label}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{padding:16,borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:16}}>A</div>
+          <span style={{fontSize:13,color:C.textSec,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>alicializett.hernandez@mercadolibre.com.mx</span>
+        </div>
+      </div>
+    </>
+  );
+
+  const BottomNav = () => {
+    const tabs=[{id:"sites",icon:"🗺️",label:"Sitios"},{id:"projects",icon:"📋",label:"Proyectos"},{id:"punches",icon:"⚙️",label:"Punch List"},{id:"charts",icon:"📊",label:"Gráficas"}];
+    return (
+      <div style={{display:"flex",background:"#fff",borderTop:`1px solid ${C.border}`,position:"sticky",bottom:0,zIndex:100}}>
+        {tabs.map(t=>(
+          <button key={t.id} onClick={()=>{setTab(t.id);setScreen("main");setDrawerTab(null);}} style={{flex:1,padding:"8px 4px",background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+            <span style={{fontSize:20}}>{t.icon}</span>
+            <span style={{fontSize:11,fontWeight:tab===t.id&&screen==="main"?700:400,color:tab===t.id&&screen==="main"?C.primary:C.textSec}}>{t.label}</span>
+            {tab===t.id&&screen==="main"&&<div style={{width:24,height:3,background:C.primary,borderRadius:2}}/>}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  // ── SCREENS ──
+  const renderScreen = () => {
+    // Sites list
+    if(screen==="main"&&tab==="sites") return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title="Sitios" actions={<><IconBtn icon="🔄" onClick={loadAllData}/></>}/>
+        <LeafletMap sites={normSites} onSiteClick={s=>{setSelSite(s);setScreen("siteDetail");}}/>
+        <div style={{padding:"12px 16px 4px"}}>
+          <input placeholder="Buscar sitio…" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:24,padding:"9px 16px",fontSize:14,background:"#fff",boxSizing:"border-box",outline:"none"}}/>
+        </div>
+        <div style={{padding:"4px 16px 80px"}}>
+          {normSites.map(s=>{
+            const pend=normPunches.filter(p=>p.siteId===s.id&&p.status==="Pendiente").length;
+            return (
+              <Card key={s.id} onClick={()=>{setSelSite(s);setScreen("siteDetail");}}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                  <span style={{fontSize:24}}>🏢</span>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}>
+                      <span style={{fontWeight:700,fontSize:16}}>{s.id}</span>
+                      {pend>0&&<Badge label={`${pend} pend.`} color={C.warning} bg="#FFF3E0"/>}
+                    </div>
+                    <div style={{fontSize:13,color:C.textSec}}>{s.desc}</div>
+                    <div style={{fontSize:12,color:C.textSec,marginTop:3}}>📍 {s.loc}</div>
+                  </div>
+                  <span style={{color:C.textSec}}>›</span>
+                </div>
+              </Card>
+            );
+          })}
+          {normSites.length===0&&<div style={{textAlign:"center",color:C.textSec,padding:40}}>Sin sitios — conectando con Verdi Flow…</div>}
+        </div>
+        <button onClick={()=>setScreen("addSite")} style={{position:"fixed",bottom:72,right:20,width:52,height:52,borderRadius:"50%",background:C.primary,color:"#fff",fontSize:26,border:"none",cursor:"pointer",boxShadow:"0 4px 12px rgba(25,118,210,.4)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+      </div>
+    );
+
+    // Add Site
+    if(screen==="addSite") return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title="Nuevo Sitio" onBack={()=>setScreen("main")}/>
+        <SiteForm onSave={async f=>{setSites(p=>[...p,f]);setScreen("main");showToast("✅ Sitio agregado");}} onCancel={()=>setScreen("main")}/>
+      </div>
+    );
+
+    // Site detail
+    if(screen==="siteDetail"&&selSite) {
+      const s = normSite(selSite);
+      const siteProjects = normProjects.filter(p=>p.siteId===s.id);
+      const sitePunches = normPunches.filter(p=>p.siteId===s.id);
+      return (
+        <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+          <TopBar title={s.id} onBack={()=>{setScreen("main");setSelSite(null);}} actions={
+            <><ExportBtn punches={sitePunches} projectId="Todos" siteId={s.id} siteName={s.desc}/></>
+          }/>
+          <div style={{padding:"16px 16px 0"}}>
+            <Card>
+              <div style={{display:"flex",gap:10}}><span style={{fontSize:28}}>🏢</span>
+                <div><div style={{fontWeight:700,fontSize:20}}>{s.id}</div><div style={{fontSize:15,marginTop:2}}>{s.desc}</div><div style={{fontSize:13,color:C.textSec,marginTop:4}}>📍 {s.loc}</div></div>
+              </div>
+            </Card>
+          </div>
+          <div style={{padding:"8px 16px 4px"}}>
+            <SectionHeader title="Proyectos del sitio" count={siteProjects.length}/>
+            {siteProjects.map(pr=>{
+              const prP=normPunches.filter(p=>p.project===pr.id);
+              const pend=prP.filter(p=>p.status==="Pendiente").length;
+              return (
+                <Card key={pr.id} onClick={()=>{setSelProject(pr);setScreen("projectDetail");}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:18}}>🏢</span>
+                    <div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{pr.id}</div><div style={{fontSize:12,color:C.textSec}}>{prP.length} punches</div></div>
+                    {pend>0&&<Badge label={`${pend} pend.`} color={C.warning} bg="#FFF3E0"/>}
+                    <span>›</span>
+                  </div>
+                </Card>
+              );
+            })}
+            <Btn variant="text" onClick={()=>setScreen("addProject")}>＋ Agregar proyecto</Btn>
+          </div>
+          <div style={{padding:"8px 16px 80px"}}>
+            <SectionHeader title="Punch Lists" count={sitePunches.length}/>
+            {sitePunches.slice(0,3).map(p=>(
+              <Card key={p.id} style={{padding:"10px 14px"}}>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <Badge label={p.phase} color={PHASE_C[p.phase]} bg={PHASE_C[p.phase]+"22"}/>
+                  <span style={{flex:1,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.desc}</span>
+                  <Badge label={p.status} color={STATUS_C[p.status]} bg={STATUS_BG[p.status]}/>
+                </div>
+              </Card>
+            ))}
+            <Btn variant="text" onClick={()=>{setPunchCtx({siteId:s.id,projectId:null});setScreen("addPunch");}}>＋ Agregar punch item</Btn>
+          </div>
+        </div>
+      );
+    }
+
+    // Add Project
+    if(screen==="addProject"&&selSite) return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title="Nuevo Proyecto" onBack={()=>setScreen("siteDetail")}/>
+        <ProjectForm siteId={normSite(selSite).id} onSave={async f=>{setProjects(p=>[...p,f]);setScreen("siteDetail");showToast("✅ Proyecto agregado");}} onCancel={()=>setScreen("siteDetail")}/>
+      </div>
+    );
+
+    // Project detail
+    if(screen==="projectDetail"&&selProject) {
+      const pr = normProject(selProject);
+      const site = normSites.find(s=>s.id===pr.siteId)||{id:pr.siteId,desc:""};
+      const pp = normPunches.filter(p=>p.project===pr.id);
+      const PhaseSection = ({phase})=>{
+        const items=pp.filter(p=>p.phase===phase); const col=PHASE_C[phase];
+        const label=phase==="IQ"?"Installation Qualification":phase==="OQ"?"Operation Qualification":"Performance Qualification";
+        return (
+          <div style={{marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0 4px"}}>
+              <div style={{width:4,height:20,background:col,borderRadius:2}}/>
+              <span style={{fontWeight:700,fontSize:14,color:col}}>{label}</span>
+              <span style={{background:col+"22",color:col,borderRadius:20,padding:"1px 8px",fontSize:12,fontWeight:700}}>{items.length}</span>
+            </div>
+            {items.map(it=>(
+              <Card key={it.id} style={{padding:"10px 14px",borderLeft:`3px solid ${col}`}}>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{it.desc}</div><div style={{fontSize:11,color:C.textSec,marginTop:2}}>{it.ts}</div></div>
+                  <Badge label={it.status} color={STATUS_C[it.status]} bg={STATUS_BG[it.status]}/>
+                </div>
+              </Card>
+            ))}
+            <Btn variant="text" small onClick={()=>{setPunchCtx({siteId:pr.siteId,projectId:pr.id,phase});setScreen("addPunch");}}>＋ Agregar {phase}</Btn>
+          </div>
+        );
+      };
+      return (
+        <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+          <TopBar title="Proyecto" onBack={()=>setScreen("siteDetail")} actions={
+            <ExportBtn punches={pp} projectId={pr.id} siteId={site.id} siteName={site.desc}/>
+          }/>
+          <div style={{padding:"16px 16px 0"}}>
+            <Card>
+              <div style={{fontSize:12,color:C.textSec}}>Sitio</div>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}><span style={{fontSize:18}}>🏢</span><span style={{fontWeight:700,fontSize:16}}>{site.id}</span></div>
+              <div style={{fontSize:12,color:C.textSec}}>Proyecto ID</div>
+              <div style={{fontWeight:600,fontSize:15,marginBottom:10}}>{pr.id}</div>
+              <div style={{display:"flex",gap:8}}>
+                {["Pendiente","En curso","Finalizado"].map(s=>{const n=pp.filter(p=>p.status===s).length;return <div key={s} style={{flex:1,background:STATUS_BG[s],borderRadius:8,padding:"6px 4px",textAlign:"center"}}><div style={{fontWeight:800,fontSize:18,color:STATUS_C[s]}}>{n}</div><div style={{fontSize:10,color:STATUS_C[s],fontWeight:600}}>{s}</div></div>;})}
+              </div>
+            </Card>
+          </div>
+          <div style={{padding:"8px 16px 80px"}}>
+            <SectionHeader title="Pruebas de Comisionamiento" count={pp.length}/>
+            <PhaseSection phase="IQ"/><PhaseSection phase="OQ"/><PhaseSection phase="PQ"/>
+          </div>
+        </div>
+      );
+    }
+
+    // Add/Edit Punch
+    if(screen==="addPunch"||screen==="editPunch") return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title={screen==="editPunch"?"Editar Punch Item":"Nuevo Punch Item"} onBack={()=>setScreen(selProject?"projectDetail":selSite?"siteDetail":"main")}/>
+        <PunchForm
+          siteId={punchCtx.siteId} projectId={punchCtx.projectId}
+          initial={screen==="editPunch"?selPunch:null}
+          sites={normSites} projects={normProjects} users={normUsers}
+          loading={savingPunch}
+          onAddInspector={()=>{setPrevScreen(screen);setScreen("addInspector");}}
+          onSave={async f=>{const ok=await savePunch(f);if(ok)setScreen(selProject?"projectDetail":selSite?"siteDetail":"main");}}
+          onCancel={()=>setScreen(selProject?"projectDetail":selSite?"siteDetail":"main")}/>
+      </div>
+    );
+
+    // Punch detail
+    if(screen==="punchDetail"&&selPunch) return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title="Detalle Punch" onBack={()=>setScreen("main")} actions={<IconBtn icon="🗑️" onClick={()=>{setPunches(p=>p.filter(x=>x.id!==selPunch.id));setScreen("main");}} color={C.danger}/>}/>
+        <div style={{padding:16}}>
+          <Card>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+              <Badge label={selPunch.phase} color={PHASE_C[selPunch.phase]} bg={PHASE_C[selPunch.phase]+"22"}/>
+              <Badge label={selPunch.status} color={STATUS_C[selPunch.status]} bg={STATUS_BG[selPunch.status]}/>
+              <Badge label={selPunch.priority} color={PRI_C[selPunch.priority]} bg={PRI_C[selPunch.priority]+"22"}/>
+              {selPunch.cat&&<Badge label={selPunch.cat} color={C.textSec} bg="#F5F5F5"/>}
+            </div>
+            <div style={{fontWeight:700,fontSize:16,marginBottom:4}}>{selPunch.desc}</div>
+            <div style={{fontSize:12,color:C.textSec}}>{selPunch.id} · {selPunch.ts}</div>
+          </Card>
+          {selPunch.img&&<Card style={{padding:8}}><img src={selPunch.img} style={{width:"100%",borderRadius:8,maxHeight:200,objectFit:"cover"}} alt="detalle"/></Card>}
+          <Card>
+            {[["Sitio",`🏢 ${selPunch.siteId}`],["Proyecto",selPunch.project],["Solución",selPunch.sol||"—"]].map(([l,v])=>(
+              <div key={l} style={{marginBottom:10}}><div style={{fontSize:12,color:C.textSec,marginBottom:2}}>{l}</div><div style={{fontSize:14,fontWeight:500}}>{v}</div></div>
+            ))}
+          </Card>
+          <Card>
+            {[["Resp. Meli",selPunch.respMeli||"—"],["Resp. Proveedor",selPunch.respProv||"—"],["F. Cierre Est.",selPunch.fechaEst||"—"],["F. Cierre Real",selPunch.fechaReal||"—"]].map(([l,v])=>(
+              <div key={l} style={{marginBottom:10}}><div style={{fontSize:12,color:C.textSec,marginBottom:2}}>{l}</div><div style={{fontSize:14,fontWeight:500}}>{v}</div></div>
+            ))}
+          </Card>
+          {selPunch.comments&&<Card><div style={{fontSize:12,color:C.textSec,marginBottom:4}}>Comentarios</div><div style={{fontSize:14}}>{selPunch.comments}</div></Card>}
+        </div>
+        <button onClick={()=>{setPunchCtx({siteId:selPunch.siteId,projectId:selPunch.project});setScreen("editPunch");}} style={{position:"fixed",bottom:80,right:20,width:52,height:52,borderRadius:"50%",background:C.primary,color:"#fff",fontSize:20,border:"none",cursor:"pointer",boxShadow:"0 4px 12px rgba(25,118,210,.4)",zIndex:50}}>✏️</button>
+      </div>
+    );
+
+    // Punch list tab
+    if(screen==="main"&&tab==="punches") {
+      const byStatus = st=>normPunches.filter(p=>p.status===st);
+      const PunchCard = ({p})=>(
+        <Card onClick={()=>{setSelPunch(p);setScreen("punchDetail");}} style={{padding:"10px 14px"}}>
+          <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+            <span style={{fontSize:16}}>🏢</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:2}}>
+                <span style={{fontWeight:700,fontSize:13}}>{p.siteId}</span>
+                <Badge label={p.phase} color={PHASE_C[p.phase]} bg={PHASE_C[p.phase]+"22"}/>
+                <span style={{fontSize:11,color:C.textSec,marginLeft:"auto"}}>{p.ts}</span>
+              </div>
+              <div style={{fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.desc}</div>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,marginTop:8,justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",gap:6}}>
+              <Badge label={p.priority} color={PRI_C[p.priority]} bg={PRI_C[p.priority]+"22"}/>
+              {p.cat&&<Badge label={p.cat} color={C.textSec} bg="#F5F5F5"/>}
+            </div>
+            <Badge label={p.status} color={STATUS_C[p.status]} bg={STATUS_BG[p.status]}/>
+          </div>
+        </Card>
+      );
+      return (
+        <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+          <TopBar title="Punch List" actions={<><ExportBtn punches={normPunches} projectId="Todos" siteId="Todos" siteName=""/><IconBtn icon="🔄" onClick={loadAllData}/></>}/>
+          <div style={{padding:"8px 16px 80px"}}>
+            {["Pendiente","En curso","Finalizado"].map(st=>{
+              const items=byStatus(st); if(!items.length)return null;
+              return <div key={st}>
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0 6px"}}>
+                  <div style={{width:4,height:18,background:STATUS_C[st],borderRadius:2}}/>
+                  <span style={{fontWeight:700,fontSize:15}}>{st}</span>
+                  <span style={{background:STATUS_BG[st],color:STATUS_C[st],borderRadius:20,padding:"1px 8px",fontSize:12,fontWeight:700}}>{items.length}</span>
+                </div>
+                {items.map(p=><PunchCard key={p.id} p={p}/>)}
+              </div>;
+            })}
+            {normPunches.length===0&&<div style={{textAlign:"center",color:C.textSec,padding:40}}>Sin punch items</div>}
+          </div>
+          <button onClick={()=>{setPunchCtx({siteId:null,projectId:null});setScreen("addPunch");}} style={{position:"fixed",bottom:72,right:20,width:52,height:52,borderRadius:"50%",background:C.primary,color:"#fff",fontSize:26,border:"none",cursor:"pointer",boxShadow:"0 4px 12px rgba(25,118,210,.4)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+        </div>
+      );
+    }
+
+    // Projects tab
+    if(screen==="main"&&tab==="projects") return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title="Proyectos" actions={<IconBtn icon="🔄" onClick={loadAllData}/>}/>
+        <div style={{padding:"8px 16px 80px"}}>
+          {[...new Set(normProjects.map(p=>p.siteId))].map(sid=>{
+            const sps=normProjects.filter(p=>p.siteId===sid);
+            return <div key={sid}>
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0 4px"}}>
+                <span style={{fontSize:16}}>🏢</span><span style={{fontWeight:700,fontSize:15}}>{sid}</span>
+                <Badge label={sps.length} color={C.primary} bg={C.primaryLight}/>
+              </div>
+              {sps.map(pr=>(
+                <Card key={pr.id} onClick={()=>{setSelSite(normSites.find(s=>s.id===pr.siteId));setSelProject(pr);setScreen("projectDetail");}} style={{marginLeft:8,borderLeft:`3px solid ${C.primary}`}}>
+                  <div style={{fontSize:14,fontWeight:600}}>{pr.id}</div>
+                  <div style={{fontSize:12,color:C.textSec,marginTop:2}}>{normPunches.filter(p=>p.project===pr.id).length} punch items</div>
+                </Card>
+              ))}
+            </div>;
+          })}
+        </div>
+      </div>
+    );
+
+    // Charts tab
+    if(screen==="main"&&tab==="charts") {
+      const [showData,setShowData] = useState(false);
+      const count=key=>{const m={};normPunches.forEach(p=>{if(p[key])m[p[key]]=(m[p[key]]||0)+1;});return Object.entries(m).map(([name,value])=>({name,value}));};
+      return (
+        <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+          <TopBar title="Gráficas Punchlist" actions={<IconBtn icon="🔄" onClick={loadAllData}/>}/>
+          <div style={{padding:"12px 16px 80px"}}>
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              <Btn small onClick={()=>setShowData(!showData)} variant={showData?"ghost":"primary"}>{showData?"📊 Gráfica":"📋 Data"}</Btn>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+              {["Pendiente","En curso","Finalizado"].map(s=>{const n=normPunches.filter(p=>p.status===s).length;return <div key={s} style={{background:STATUS_BG[s],borderRadius:10,padding:"10px 8px",textAlign:"center"}}><div style={{fontSize:22,fontWeight:800,color:STATUS_C[s]}}>{n}</div><div style={{fontSize:11,color:STATUS_C[s],fontWeight:600}}>{s}</div></div>;})}
+            </div>
+            {[{title:"Por Site ID",data:count("siteId"),color:C.primary},{title:"Por Fase",data:count("phase"),color:"#0288D1"},{title:"Por Estatus",data:count("status"),color:"#43A047"},{title:"Por Prioridad",data:count("priority"),color:"#FB8C00"}].map(ch=>(
+              <Card key={ch.title} style={{marginBottom:14}}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>{ch.title}</div>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={ch.data} margin={{top:4,right:8,left:-20,bottom:20}}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={C.border}/>
+                    <XAxis dataKey="name" tick={{fontSize:11}} angle={-20} textAnchor="end"/>
+                    <YAxis tick={{fontSize:11}}/>
+                    <Tooltip contentStyle={{fontSize:12,borderRadius:8}}/>
+                    <Bar dataKey="value" name="Count" fill={ch.color} radius={[4,4,0,0]}/>
+                  </BarChart>
+                </ResponsiveContainer>
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // Inspectors
+    if(screen==="inspectors") return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title="Inspectores" onBack={isDesktop?null:()=>{setScreen("main");setDrawerTab(null);}} actions={<IconBtn icon="🔄" onClick={loadAllData}/>}/>
+        <div style={{padding:"8px 16px 80px"}}>
+          {normUsers.map(u=>(
+            <Card key={u.id} onClick={()=>{setSelUser(u);}} style={{padding:"12px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:40,height:40,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:16,flexShrink:0}}>
+                  {(u.nombre[0]||"?")}{ (u.apellido[0]||"")}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:15}}>{u.nombre} {u.apellido}</div>
+                  <div style={{fontSize:12,color:C.textSec,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+                </div>
+                <Badge label={`Turno ${u.shift}`} color={u.shift==="Día"?"#E65100":"#1565C0"} bg={u.shift==="Día"?"#FFF3E0":"#E3F2FD"}/>
+              </div>
+            </Card>
+          ))}
+        </div>
+        <button onClick={()=>{setPrevScreen("inspectors");setScreen("addInspector");}} style={{position:"fixed",bottom:72,right:20,width:52,height:52,borderRadius:"50%",background:C.primary,color:"#fff",fontSize:26,border:"none",cursor:"pointer",boxShadow:"0 4px 12px rgba(25,118,210,.4)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+      </div>
+    );
+
+    if(screen==="addInspector") return (
+      <div style={{flex:1,overflowY:"auto",background:C.bg}}>
+        <TopBar title="Nuevo Inspector" onBack={()=>setScreen(prevScreen)}/>
+        <InspectorForm onSave={async f=>{setUsers(p=>[...p,f]);setScreen(prevScreen);showToast("✅ Inspector agregado");}} onCancel={()=>setScreen(prevScreen)}/>
+      </div>
+    );
+
+    return <div style={{padding:40,textAlign:"center",color:C.textSec}}>Cargando…</div>;
+  };
+
+  if(isDesktop) return (
+    <div style={{display:"flex",width:"100vw",height:"100vh",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:C.bg,overflow:"hidden"}}>
+      <DesktopSidebar/>
+      <div style={{flex:1,minWidth:0,overflowY:"auto",display:"flex",flexDirection:"column"}}>{renderScreen()}</div>
+    </div>
+  );
+
+  return (
+    <div style={{maxWidth:430,margin:"0 auto",height:"100vh",display:"flex",flexDirection:"column",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",background:C.bg,position:"relative",overflow:"hidden"}}>
+      <button onClick={()=>setDrawerOpen(true)} style={{position:"fixed",top:12,left:16,zIndex:200,background:"none",border:"none",cursor:"pointer",fontSize:22,padding:4,lineHeight:1}}>☰</button>
+      <SideDrawer/>
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column"}}>{renderScreen()}</div>
+      {screen==="main"&&<BottomNav/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("app")).render(<App/>);
+</script>
+</body>
+</html>
